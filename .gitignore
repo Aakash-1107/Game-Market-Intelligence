@@ -1,0 +1,64 @@
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment variables & Secrets
+.env
+.env.*
+Secrets/
+secrets/
+*.pem
+*.key
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS & Office temporary lock files
+.DS_Store
+Thumbs.db
+~$*.xlsx
+~$*.xls
+
+# Large temporary data dumps (keep repository lean)
+steam_app_list.csv
+steam_apps.json
+output.json
+rawg.json
+
+# Ingestion script output (generated at runtime, appended by demo_data_ingest.py)
+First_data_ingest/player_count.csv
+
+# Local agent tooling / skills (not part of the project repo)
+.agents/
+
+# Research, notes, and working files (repo should only contain .github/ + First_data_ingest/)
+API testing/
+API_SUMMARY.md
+capstone_project_guide_overview.md
+Rejected/
+Market-Reports/
+Project_related_ss/
+Steps_taken.txt
+
+# Spreadsheets & data files
+Main-games-sheet.xlsx
+Platform_status.xlsx
+Huge games.txt
+
+# Repository metadata (no README published for now)
+README.md
