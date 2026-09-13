@@ -29,4 +29,4 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          python First_data_ingest/demo_data_ingest.py
+          python First_data_ingest/steam_data_ingest.py
