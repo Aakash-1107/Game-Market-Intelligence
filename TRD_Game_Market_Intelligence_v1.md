@@ -21,7 +21,7 @@ External APIs          Local Datasets
        └──────────┬──────────┘
                   ▼
         ┌─────────────────────┐
-        │   Raw Layer (JSONB) │  ← Python ingestion scripts
+        │   Raw Layer (JSONB) │  ← Python ingestion jobs
         └─────────────────────┘
                   │
                   ▼
@@ -479,20 +479,19 @@ The project deliberately avoids adding infrastructure solely for résumé value.
 
 ## 12. Implementation Plan
 
-The dates below are a working implementation plan rather than fixed technical requirements. They may change as data feasibility and analytical modelling are validated.
+The work is sequenced in phases that build on each other. Ordering may shift if data feasibility or analytical modelling reveal different priorities.
 
-| Date | Milestone |
+| Phase | Milestone |
 |---|---|
-| Sep 8–9 | API feasibility testing; sources confirmed |
-| Sep 10–12 | Pipeline foundation; CSV bootstrap |
-| Sep 13–14 | Steam ingestion pipeline; RAWG ID resolution |
-| Sep 15–17 | ITAD price history; SteamCharts scrape for gap-fill |
-| Sep 18–19 | dbt project setup; staging models for all sources |
-| Sep 20–21 | OpenCritic test + integration or fallback confirmed |
-| Sep 22–23 | dbt mart models (star schema); dbt tests passing |
-| Sep 24–25 | Q1–Q3 analytical queries; lifecycle curves; health classification |
-| Sep 26 | Q4 anomaly detection; sale effect analysis |
-| Sep 27 | Dashboard |
-| Sep 28 | Final orchestration approach validated; end-to-end pipeline run |
-| Sep 29 | Documentation, architecture diagram, testing |
-| Sep 30 | Final submission |
+| 1 | API feasibility testing; sources confirmed |
+| 2 | Ingestion foundation; CSV bootstrap |
+| 3 | Steam ingestion; RAWG ID resolution |
+| 4 | ITAD price history; SteamCharts gap-fill |
+| 5 | dbt project setup; staging models for all sources |
+| 6 | OpenCritic integration or fallback confirmed |
+| 7 | dbt mart models (star schema); dbt tests passing |
+| 8 | Q1–Q3 analytics; lifecycle curves; health classification |
+| 9 | Q4 anomaly detection; sale-effect analysis |
+| 10 | Dashboard |
+| 11 | Orchestration approach validated; end-to-end run |
+| 12 | Documentation and architecture diagram |

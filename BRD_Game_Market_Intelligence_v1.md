@@ -213,7 +213,6 @@ All 30 granular games are present in the Part1 5-minute granularity CSV dataset,
 
 ## 11. Constraints & Assumptions
 
-- **Deadline:** September 30, 2026
 - **Budget:** Free API tiers and open-source tooling only
 - **Database:** PostgreSQL; currently Neon for prototyping; host may change (connection string via env var)
 - **Game selection:** Primary analysis tier restricted to games with confirmed 5-minute granularity CSV data — 30 games selected on this basis; ~20 additional newer games tracked via live collection without granular historical data
