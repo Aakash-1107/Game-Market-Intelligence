@@ -28,7 +28,7 @@ flowchart LR
     end
 
     subgraph Ingestion [Ingestion]
-        PythonIngest["Python Ingestion Scripts"]
+        PythonIngest["Python Ingestion Jobs"]
     end
 
     subgraph Storage [Analytical Storage]
@@ -65,7 +65,7 @@ flowchart LR
 ```text
 ├── .github/workflows/          # GitHub Actions hourly ingestion workflow
 ├── First_data_ingest/
-│   └── steam_data_ingest.py    # Live player count ingestion script
+│   └── steam_data_ingest.py    # Live player count ingestion job
 ├── TRD_Game_Market_Intelligence_v1.md   # Technical Requirements Document
 ├── BRD_Game_Market_Intelligence_v1.md   # Business Requirements Document
 ├── .gitignore                  # Git exclusion rules
