@@ -88,7 +88,7 @@ def get_current_player_counts():
 
 
 def save_to_postgres(records, db_url):
-    """Insert player count records into PostgreSQL (Neon / Supabase)."""
+    """Insert player count records into PostgreSQL (Neon)."""
     import psycopg2
 
     # Connect to PostgreSQL
