@@ -77,9 +77,14 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_current_player_counts():
-    """Fetch live player count for all games in GAMES mapping."""
+    """Fetch live player count for all games in GAMES mapping.
+
+    Returns (records, events): records is the data to persist, and events
+    is one entry per game describing the fetch outcome for ingestion_log.
+    """
     timestamp = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     records = []
+    events = []
 
     for appid, name in GAMES.items():
         try:
@@ -94,11 +99,30 @@ def get_current_player_counts():
                 "game_name": name,
                 "player_count": player_count,
             })
+            events.append({
+                "source": "steam",
+                "stage": "raw",
+                "game_id": str(appid),
+                "status": "success",
+                "http_status": response.status_code,
+                "error_message": None,
+                "rows_affected": 1,
+            })
             print(f"[{timestamp}] {name} ({appid}): {player_count} players")
         except Exception as e:
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            events.append({
+                "source": "steam",
+                "stage": "raw",
+                "game_id": str(appid),
+                "status": "failed",
+                "http_status": status_code,
+                "error_message": str(e),
+                "rows_affected": 0,
+            })
             print(f"Error fetching appid {appid} ({name}): {e}")
 
-    return records
+    return records, events
 
 
 def save_to_postgres(records, db_url):
@@ -150,25 +174,77 @@ def save_to_csv(records):
     print(f"Appended {len(records)} records to {CSV_FILE}.")
 
 
+def write_ingestion_log(events, db_url):
+    """Best-effort per-game ingestion event logging to the ingestion_log table."""
+    import psycopg2
+
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ingestion_log (
+                    run_id          UUID DEFAULT gen_random_uuid(),
+                    run_timestamp   TIMESTAMPTZ DEFAULT NOW(),
+                    source          VARCHAR,
+                    stage           VARCHAR,
+                    game_id         VARCHAR,
+                    status          VARCHAR,
+                    http_status     INTEGER,
+                    error_message   TEXT,
+                    rows_affected   INTEGER
+                );
+            """)
+
+            insert_query = """
+                INSERT INTO ingestion_log
+                    (source, stage, game_id, status, http_status, error_message, rows_affected)
+                VALUES (%s, %s, %s, %s, %s, %s, %s);
+            """
+            for event in events:
+                cur.execute(
+                    insert_query,
+                    (
+                        event["source"],
+                        event["stage"],
+                        event["game_id"],
+                        event["status"],
+                        event["http_status"],
+                        event["error_message"],
+                        event["rows_affected"],
+                    ),
+                )
+        conn.commit()
+        print(f"Wrote {len(events)} events to ingestion_log.")
+    except Exception as e:
+        print(f"WARNING: could not write ingestion_log: {e}")
+    finally:
+        conn.close()
+
+
 def main():
     print("Starting player count data ingest...")
-    records = get_current_player_counts()
+    records, events = get_current_player_counts()
 
-    if not records:
-        print("No records retrieved. Exiting.")
-        return
-
-    if DATABASE_URL:
-        print("DATABASE_URL found. Writing to PostgreSQL...")
-        try:
-            save_to_postgres(records, DATABASE_URL)
-        except Exception as e:
-            print(f"PostgreSQL insertion failed: {e}")
-            print("Falling back to local CSV...")
+    if records:
+        if DATABASE_URL:
+            print("DATABASE_URL found. Writing to PostgreSQL...")
+            try:
+                save_to_postgres(records, DATABASE_URL)
+            except Exception as e:
+                print(f"PostgreSQL insertion failed: {e}")
+                print("Falling back to local CSV...")
+                save_to_csv(records)
+        else:
+            print("No DATABASE_URL found in environment. Saving to CSV...")
             save_to_csv(records)
     else:
-        print("No DATABASE_URL found in environment. Saving to CSV...")
-        save_to_csv(records)
+        print("No records retrieved.")
+
+    if DATABASE_URL:
+        print("DATABASE_URL found. Writing ingestion log...")
+        write_ingestion_log(events, DATABASE_URL)
+    else:
+        print("No DATABASE_URL found; skipping ingestion_log writes.")
 
 
 if __name__ == "__main__":

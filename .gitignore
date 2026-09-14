@@ -1,3 +1,6 @@
+# opencode local config (contains permissions, do not commit)
+opencode.json
+
 # Virtual Environments
 .venv/
 venv/
