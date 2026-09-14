@@ -9,6 +9,7 @@ Data Engineering capstone project that ingests, transforms, and analyses PC gami
 - **Three-layer warehouse (raw → staging → analytical):** API responses kept as JSONB in the raw layer for reprocessing without re-calling APIs.
 - **Hourly live ingestion** of concurrent player counts via GitHub Actions.
 - **dbt Core** transforms staging into an analytical star schema with lineage and tests.
+- **Roadmap:** designed to scale from the ~50 tracked games to the full Steam catalogue (~184,992 apps) without architectural changes.
 
 ## 🏗️ Architecture
 
