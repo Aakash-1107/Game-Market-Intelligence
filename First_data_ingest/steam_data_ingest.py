@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import requests
 from dotenv import load_dotenv
+from prefect import flow
 
 # Load environment variables from .env
 load_dotenv(override=True)
@@ -247,5 +248,12 @@ def main():
         print("No DATABASE_URL found; skipping ingestion_log writes.")
 
 
-if __name__ == "__main__":
+@flow
+def steam_player_count_ingest():
     main()
+
+
+if __name__ == "__main__":
+    steam_player_count_ingest()
+
+
