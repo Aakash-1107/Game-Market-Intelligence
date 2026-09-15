@@ -1,9 +1,6 @@
 name: Hourly Steam Player Count Ingestion
 
 on:
-  schedule:
-    # Runs every hour at minute 0 (UTC)
-    - cron: '0 * * * *'
   workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
