@@ -18,9 +18,14 @@ push: null
 # pull section allows you to provide instructions for cloning
 # this project in remote locations
 pull:
-- prefect.deployments.steps.git_clone:
-    repository: https://github.com/Aakash-1107/Game-Market-Intelligence.git
-    branch: main
+  - prefect.deployments.steps.git_clone:
+      id: clone-step
+      repository: https://github.com/Aakash-1107/Game-Market-Intelligence.git
+      branch: main
+
+  - prefect.deployments.steps.pip_install_requirements:
+      directory: "{{ clone-step.directory }}"
+      requirements_file: requirements.txt
 
 # the deployments section allows you to provide configuration
 # for deploying flows
