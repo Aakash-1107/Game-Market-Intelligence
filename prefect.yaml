@@ -40,7 +40,9 @@ deployments:
   work_pool:
     name: managed-steam-pool
     work_queue_name: null
-    job_variables: {}
+    job_variables:
+      env:
+        DATABASE_URL: "{{ prefect.blocks.secret.neon-database-url }}"
   schedules:
   - cron: 0 * * * *
     timezone: Europe/Berlin
