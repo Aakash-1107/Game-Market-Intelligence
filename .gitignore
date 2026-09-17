@@ -46,10 +46,14 @@ rawg.json
 # Ingestion script output (generated at runtime, appended by demo_data_ingest.py)
 First_data_ingest/player_count.csv
 
+# Runtime logs
+logs/
+*.log
+
 # Local agent tooling / skills (not part of the project repo)
 .agents/
 
-# Research, notes, and working files (repo should only contain .github/ + First_data_ingest/)
+# Research, notes, and working files
 API testing/
 API_SUMMARY.md
 capstone_project_guide_overview.md
@@ -64,3 +68,6 @@ Platform_status.xlsx
 game_matrix.xlsx
 Huge games.txt
 analytical-questions.txt
+
+# Rust
+target/
