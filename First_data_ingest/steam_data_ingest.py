@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import requests
+import psycopg2
 from dotenv import load_dotenv
 from prefect import flow
 
@@ -128,13 +129,9 @@ def get_current_player_counts():
 
 def save_to_postgres(records, db_url):
     """Insert player count records into PostgreSQL (Neon)."""
-    import psycopg2
-
-    # Connect to PostgreSQL
     conn = psycopg2.connect(db_url)
     try:
         with conn.cursor() as cur:
-            # Create table if it doesn't exist yet
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS steam_player_counts (
                     id SERIAL PRIMARY KEY,
@@ -145,7 +142,6 @@ def save_to_postgres(records, db_url):
                 );
             """)
 
-            # Insert batch
             insert_query = """
                 INSERT INTO steam_player_counts (recorded_at, appid, game_name, player_count)
                 VALUES (%s, %s, %s, %s);
@@ -175,77 +171,107 @@ def save_to_csv(records):
     print(f"Appended {len(records)} records to {CSV_FILE}.")
 
 
-def write_ingestion_log(events, db_url):
-    """Best-effort per-game ingestion event logging to the ingestion_log table."""
-    import psycopg2
-
-    conn = psycopg2.connect(db_url)
+def write_ingestion_log(events, db_url, pipeline_status="success", pipeline_error=None):
+    """
+    Write per-game ingestion events plus a pipeline-level summary record.
+    Always called via finally block — records both success and failure.
+    """
     try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS ingestion_log (
-                    run_id          UUID DEFAULT gen_random_uuid(),
-                    run_timestamp   TIMESTAMPTZ DEFAULT NOW(),
-                    source          VARCHAR,
-                    stage           VARCHAR,
-                    game_id         VARCHAR,
-                    status          VARCHAR,
-                    http_status     INTEGER,
-                    error_message   TEXT,
-                    rows_affected   INTEGER
-                );
-            """)
+        conn = psycopg2.connect(db_url)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ingestion_log (
+                        run_id          UUID DEFAULT gen_random_uuid(),
+                        run_timestamp   TIMESTAMPTZ DEFAULT NOW(),
+                        source          VARCHAR,
+                        stage           VARCHAR,
+                        game_id         VARCHAR,
+                        status          VARCHAR,
+                        http_status     INTEGER,
+                        error_message   TEXT,
+                        rows_affected   INTEGER
+                    );
+                """)
 
-            insert_query = """
-                INSERT INTO ingestion_log
-                    (source, stage, game_id, status, http_status, error_message, rows_affected)
-                VALUES (%s, %s, %s, %s, %s, %s, %s);
-            """
-            for event in events:
-                cur.execute(
-                    insert_query,
-                    (
-                        event["source"],
-                        event["stage"],
-                        event["game_id"],
-                        event["status"],
-                        event["http_status"],
-                        event["error_message"],
-                        event["rows_affected"],
-                    ),
-                )
-        conn.commit()
-        print(f"Wrote {len(events)} events to ingestion_log.")
+                insert_query = """
+                    INSERT INTO ingestion_log
+                        (source, stage, game_id, status, http_status, error_message, rows_affected)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s);
+                """
+
+                if events:
+                    # Normal path — write per-game events
+                    for event in events:
+                        cur.execute(insert_query, (
+                            event["source"],
+                            event["stage"],
+                            event["game_id"],
+                            event["status"],
+                            event["http_status"],
+                            event["error_message"],
+                            event["rows_affected"],
+                        ))
+                else:
+                    # Pipeline crashed before any events were collected
+                    cur.execute(insert_query, (
+                        "steam",
+                        "player_count_ingest",
+                        None,
+                        pipeline_status,
+                        None,
+                        pipeline_error,
+                        0,
+                    ))
+
+            conn.commit()
+            print(f"Wrote {len(events) or 1} events to ingestion_log.")
+        finally:
+            conn.close()
     except Exception as e:
-        print(f"WARNING: could not write ingestion_log: {e}")
-    finally:
-        conn.close()
+        # Log write failed — print so Prefect captures it in run logs
+        print(f"CRITICAL: ingestion_log write failed: {e}")
 
 
 def main():
     print("Starting player count data ingest...")
-    records, events = get_current_player_counts()
 
-    if records:
-        if DATABASE_URL:
-            print("DATABASE_URL found. Writing to PostgreSQL...")
-            try:
-                save_to_postgres(records, DATABASE_URL)
-            except Exception as e:
-                print(f"PostgreSQL insertion failed: {e}")
-                print("Falling back to local CSV...")
+    pipeline_status = "success"
+    pipeline_error = None
+    records = []
+    events = []
+
+    try:
+        records, events = get_current_player_counts()
+
+        if records:
+            if DATABASE_URL:
+                print("DATABASE_URL found. Writing to PostgreSQL...")
+                try:
+                    save_to_postgres(records, DATABASE_URL)
+                except Exception as e:
+                    print(f"PostgreSQL insertion failed: {e}")
+                    print("Falling back to local CSV...")
+                    save_to_csv(records)
+            else:
+                print("No DATABASE_URL found in environment. Saving to CSV...")
                 save_to_csv(records)
         else:
-            print("No DATABASE_URL found in environment. Saving to CSV...")
-            save_to_csv(records)
-    else:
-        print("No records retrieved.")
+            print("No records retrieved.")
 
-    if DATABASE_URL:
-        print("DATABASE_URL found. Writing ingestion log...")
-        write_ingestion_log(events, DATABASE_URL)
-    else:
-        print("No DATABASE_URL found; skipping ingestion_log writes.")
+    except Exception as e:
+        pipeline_status = "failed"
+        pipeline_error = str(e)
+        print(f"Pipeline failed: {e}")
+        raise  # re-raise so Prefect marks the run as Failed
+
+    finally:
+        # Always runs — success or failure
+        if DATABASE_URL:
+            print("Writing ingestion log...")
+            write_ingestion_log(events, DATABASE_URL, pipeline_status, pipeline_error)
+        else:
+            print("No DATABASE_URL found; skipping ingestion_log writes.")
 
 
 @flow
@@ -255,5 +281,3 @@ def steam_player_count_ingest():
 
 if __name__ == "__main__":
     steam_player_count_ingest()
-
-
