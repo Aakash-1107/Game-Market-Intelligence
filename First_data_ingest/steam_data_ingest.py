@@ -10,7 +10,7 @@ from prefect import flow
 # Load environment variables from .env
 load_dotenv(override=True)
 
-URL = "https://api.steampowered.com/IntentionFailureTest/"
+URL = "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/"
 
 # Mapping of games: appid -> game name (55 unique titles)
 GAMES = {
