@@ -1,0 +1,34 @@
+version: 2
+
+sources:
+  - name: steam_raw
+    description: "Raw Steam data stored in RustFS object storage"
+    # DELETE the meta block below — it overrides the table-level external locations
+    tables:
+      - name: player_counts
+        description: "Hourly concurrent player counts per game, ingested via Prefect"
+        external:
+          location: "s3://game-market-raw/raw/steam/player_counts/**/*.parquet"
+          format: parquet
+        columns:
+          - name: id
+            description: "Row ID from Neon — not meaningful in the analytical layer"
+          - name: recorded_at
+            description: "Timestamp when the player count was fetched"
+          - name: appid
+            description: "Steam App ID — canonical game identifier"
+          - name: game_name
+            description: "Game name as defined in the ingestion GAMES dictionary"
+          - name: player_count
+            description: "Concurrent players at time of observation. NULL means Steam returned no value."
+
+      - name: app_list
+        description: "Full Steam app catalogue — appid and name for all Steam applications"
+        external:
+          location: "s3://game-market-raw/raw/steam/app_list/steam_app_list.csv"
+          format: csv
+        columns:
+          - name: appid
+            description: "Steam App ID"
+          - name: name
+            description: "Application name as returned by Steam"

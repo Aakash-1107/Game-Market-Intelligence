@@ -75,3 +75,5 @@ target/
 # DuckDB
 data/
 *.duckdb
+
+rustfs_logs.txt

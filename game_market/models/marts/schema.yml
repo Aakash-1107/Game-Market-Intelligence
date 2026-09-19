@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: dim_game
+    description: "One row per Steam application. Grain: one Steam App ID."
+    columns:
+      - name: game_key
+        description: "MD5 surrogate key generated from steam_app_id"
+        tests:
+          - not_null
+          - unique
+      - name: steam_app_id
+        description: "Canonical Steam App ID"
+        tests:
+          - not_null
+          - unique
+      - name: app_name
+        description: "Application name as returned by Steam"
+        tests:
+          - not_null
+
+  - name: fact_player_activity
+    description: "One row per game per observation timestamp. Grain: one player count observation for one game at one point in time."
+    columns:
+      - name: activity_key
+        description: "MD5 surrogate key generated from steam_app_id and recorded_at"
+        tests:
+          - not_null
+          - unique
+      - name: game_key
+        description: "Foreign key to dim_game"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_game')
+              field: game_key
+      - name: steam_app_id
+        description: "Steam App ID"
+        tests:
+          - not_null
+      - name: player_count
+        description: "Concurrent players at time of observation"
+        tests:
+          - not_null
+      - name: recorded_at
+        description: "Timestamp when the player count was fetched"
+        tests:
+          - not_null
+      - name: data_resolution
+        description: "Granularity of the observation: hourly, 5min, or monthly"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['hourly', '5min', 'monthly']

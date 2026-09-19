@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_steam__app_list
+    description: "Cleaned Steam app catalogue from RustFS CSV"
+    columns:
+      - name: steam_app_id
+        description: "Steam App ID"
+        tests:
+          - not_null
+          - unique
+      - name: app_name
+        description: "Application name"
+        tests:
+          - not_null
+
+  - name: stg_steam__player_counts
+    description: "Cleaned hourly player count observations from RustFS Parquet"
+    columns:
+      - name: steam_app_id
+        description: "Steam App ID"
+        tests:
+          - not_null
+      - name: player_count
+        description: "Concurrent players — nulls already filtered in staging"
+        tests:
+          - not_null
+      - name: recorded_at
+        description: "Observation timestamp"
+        tests:
+          - not_null
