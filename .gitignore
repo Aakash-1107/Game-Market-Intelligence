@@ -71,3 +71,7 @@ analytical-questions.txt
 
 # Rust
 target/
+
+# DuckDB
+data/
+*.duckdb

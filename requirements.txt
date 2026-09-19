@@ -3,3 +3,5 @@ python-dotenv>=1.2.3
 pandas>=2.0.0
 duckdb>=1.5.5
 boto3>=1.43.96
+pyarrow>=25.0.1
+psycopg2-binary
