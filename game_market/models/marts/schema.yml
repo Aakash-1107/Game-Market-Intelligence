@@ -52,3 +52,36 @@ models:
           - not_null
           - accepted_values:
               values: ['hourly', '5min', 'monthly']
+
+
+  - name: fact_price_snapshot
+    description: "One row per price change event per game per shop. Grain: itad_game_id + shop_id + observed_at."
+    columns:
+      - name: snapshot_id
+        description: "Surrogate key: md5(itad_game_id | shop_id | observed_at)"
+        data_tests:
+          - unique
+          - not_null
+      - name: game_key
+        data_tests:
+          - not_null
+      - name: steam_app_id
+        data_tests:
+          - not_null
+      - name: shop_id
+        data_tests:
+          - not_null
+      - name: observed_at
+        data_tests:
+          - not_null
+      - name: price_amount
+        data_tests:
+          - not_null
+      - name: discount_pct
+        data_tests:
+          - not_null
+      - name: is_on_sale
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]

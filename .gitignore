@@ -77,3 +77,4 @@ data/
 *.duckdb
 
 rustfs_logs.txt
+duckdb_inspect.py

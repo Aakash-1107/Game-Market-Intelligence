@@ -32,3 +32,11 @@ sources:
             description: "Steam App ID"
           - name: name
             description: "Application name as returned by Steam"
+          
+  - name: itad_raw
+    description: "Raw ITAD price history JSON files from S3"
+    tables:
+      - name: price_history
+        description: "One file per game per ingestion run containing full price history across all shops"
+        meta:
+          external_location: "s3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json"
