@@ -1,22 +1,9 @@
----
-# Welcome to your prefect.yaml file! You can use this file for
-# storing and managing configuration for deploying your flows.
-# We recommend committing this file to source control along
-# with your flow code.
-
-# Generic metadata about this project
 name: Capstone Project
 prefect-version: 3.8.6
 
-# build section allows you to manage and build docker images
 build: null
-
-# push section allows you to manage if and how this project
-# is uploaded to remote locations
 push: null
 
-# pull section allows you to provide instructions for cloning
-# this project in remote locations
 pull:
   - prefect.deployments.steps.git_clone:
       id: clone-step
@@ -27,8 +14,6 @@ pull:
       directory: "{{ clone-step.directory }}"
       requirements_file: requirements.txt
 
-# the deployments section allows you to provide configuration
-# for deploying flows
 deployments:
 - name: hourly-steam-ingestion
   version: null
@@ -42,7 +27,11 @@ deployments:
     work_queue_name: null
     job_variables:
       env:
-        DATABASE_URL: "{{ prefect.blocks.secret.neon-database-url }}"
+        DATABASE_URL:   "{{ prefect.blocks.secret.neon-database-url }}"
+        AWS_ACCESS_KEY: "{{ prefect.blocks.secret.aws-access-key }}"
+        AWS_SECRET_KEY: "{{ prefect.blocks.secret.aws-secret-key }}"
+        AWS_REGION:     "{{ prefect.blocks.secret.aws-region }}"
+        AWS_BUCKET:     "{{ prefect.blocks.secret.aws-bucket }}"
   schedules:
   - cron: 0 * * * *
     timezone: Europe/Berlin

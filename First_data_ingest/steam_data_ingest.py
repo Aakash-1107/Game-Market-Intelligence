@@ -1,18 +1,19 @@
-import csv
+import io
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-import requests
+
+import boto3
+import pandas as pd
 import psycopg2
+import requests
 from dotenv import load_dotenv
 from prefect import flow
 
-# Load environment variables from .env
 load_dotenv(override=True)
 
 URL = "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/"
 
-# Mapping of games: appid -> game name (55 unique titles)
 GAMES = {
     251570: "7 Days to Die",
     1172470: "Apex Legends",
@@ -71,20 +72,17 @@ GAMES = {
     230410: "Warframe",
 }
 
-# Resolve paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CSV_FILE = os.path.join(BASE_DIR, "player_count.csv")
-BERLIN_TZ = ZoneInfo("Europe/Berlin")
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL   = os.getenv("DATABASE_URL")
+AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
+AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
+AWS_REGION     = os.getenv("AWS_REGION", "eu-central-1")
+AWS_BUCKET     = os.getenv("AWS_BUCKET", "game-market-raw")
 
 
 def get_current_player_counts():
-    """Fetch live player count for all games in GAMES mapping.
-
-    Returns (records, events): records is the data to persist, and events
-    is one entry per game describing the fetch outcome for ingestion_log.
-    """
-    timestamp = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    """Fetch live player count for all games. Returns (records, events)."""
+    # Use UTC from now onward — previous data was Berlin time (documented in DATA_QUALITY.md)
+    timestamp = datetime.now(timezone.utc)
     records = []
     events = []
 
@@ -92,14 +90,13 @@ def get_current_player_counts():
         try:
             response = requests.get(URL, params={"appid": appid}, timeout=10)
             response.raise_for_status()
-            data = response.json()
-            player_count = data.get("response", {}).get("player_count", None)
+            player_count = response.json().get("response", {}).get("player_count", None)
 
             records.append({
-                "timestamp": timestamp,
                 "appid": appid,
                 "game_name": name,
                 "player_count": player_count,
+                "recorded_at": timestamp,
             })
             events.append({
                 "source": "steam",
@@ -111,6 +108,7 @@ def get_current_player_counts():
                 "rows_affected": 1,
             })
             print(f"[{timestamp}] {name} ({appid}): {player_count} players")
+
         except Exception as e:
             status_code = getattr(getattr(e, "response", None), "status_code", None)
             events.append({
@@ -127,55 +125,33 @@ def get_current_player_counts():
     return records, events
 
 
-def save_to_postgres(records, db_url):
-    """Insert player count records into PostgreSQL (Neon)."""
-    conn = psycopg2.connect(db_url)
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS steam_player_counts (
-                    id SERIAL PRIMARY KEY,
-                    recorded_at TIMESTAMPTZ NOT NULL,
-                    appid INTEGER NOT NULL,
-                    game_name VARCHAR(100) NOT NULL,
-                    player_count INTEGER
-                );
-            """)
+def save_to_s3(records):
+    """Write player count records as a dated Parquet file to AWS S3."""
+    df = pd.DataFrame(records)
 
-            insert_query = """
-                INSERT INTO steam_player_counts (recorded_at, appid, game_name, player_count)
-                VALUES (%s, %s, %s, %s);
-            """
-            for r in records:
-                cur.execute(
-                    insert_query,
-                    (r["timestamp"], r["appid"], r["game_name"], r["player_count"]),
-                )
+    # Partition by UTC date, filename includes hour for uniqueness
+    now_utc = datetime.now(timezone.utc)
+    partition = now_utc.strftime("%Y/%m/%d")
+    filename  = now_utc.strftime("player_counts_%Y%m%d_%H%M.parquet")
+    s3_key    = f"raw/steam/player_counts/{partition}/{filename}"
 
-        conn.commit()
-        print(f"Successfully inserted {len(records)} records into PostgreSQL.")
-    finally:
-        conn.close()
+    buffer = io.BytesIO()
+    df.to_parquet(buffer, index=False, engine="pyarrow")
+    buffer.seek(0)
 
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY,
+        region_name=AWS_REGION,
+    )
 
-def save_to_csv(records):
-    """Fallback: append records to local CSV file."""
-    file_exists = os.path.exists(CSV_FILE)
-    with open(CSV_FILE, mode="a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f, fieldnames=["timestamp", "appid", "game_name", "player_count"]
-        )
-        if not file_exists:
-            writer.writeheader()
-        writer.writerows(records)
-    print(f"Appended {len(records)} records to {CSV_FILE}.")
+    s3.put_object(Bucket=AWS_BUCKET, Key=s3_key, Body=buffer.getvalue())
+    print(f"Uploaded {len(records)} records to s3://{AWS_BUCKET}/{s3_key}")
 
 
 def write_ingestion_log(events, db_url, pipeline_status="success", pipeline_error=None):
-    """
-    Write per-game ingestion events plus a pipeline-level summary record.
-    Always called via finally block — records both success and failure.
-    """
+    """Write per-game ingestion events to Neon ingestion_log."""
     try:
         conn = psycopg2.connect(db_url)
         try:
@@ -201,7 +177,6 @@ def write_ingestion_log(events, db_url, pipeline_status="success", pipeline_erro
                 """
 
                 if events:
-                    # Normal path — write per-game events
                     for event in events:
                         cur.execute(insert_query, (
                             event["source"],
@@ -213,15 +188,9 @@ def write_ingestion_log(events, db_url, pipeline_status="success", pipeline_erro
                             event["rows_affected"],
                         ))
                 else:
-                    # Pipeline crashed before any events were collected
                     cur.execute(insert_query, (
-                        "steam",
-                        "player_count_ingest",
-                        None,
-                        pipeline_status,
-                        None,
-                        pipeline_error,
-                        0,
+                        "steam", "player_count_ingest", None,
+                        pipeline_status, None, pipeline_error, 0,
                     ))
 
             conn.commit()
@@ -229,7 +198,6 @@ def write_ingestion_log(events, db_url, pipeline_status="success", pipeline_erro
         finally:
             conn.close()
     except Exception as e:
-        # Log write failed — print so Prefect captures it in run logs
         print(f"CRITICAL: ingestion_log write failed: {e}")
 
 
@@ -237,41 +205,29 @@ def main():
     print("Starting player count data ingest...")
 
     pipeline_status = "success"
-    pipeline_error = None
+    pipeline_error  = None
     records = []
-    events = []
+    events  = []
 
     try:
         records, events = get_current_player_counts()
 
         if records:
-            if DATABASE_URL:
-                print("DATABASE_URL found. Writing to PostgreSQL...")
-                try:
-                    save_to_postgres(records, DATABASE_URL)
-                except Exception as e:
-                    print(f"PostgreSQL insertion failed: {e}")
-                    print("Falling back to local CSV...")
-                    save_to_csv(records)
-            else:
-                print("No DATABASE_URL found in environment. Saving to CSV...")
-                save_to_csv(records)
+            save_to_s3(records)
         else:
             print("No records retrieved.")
 
     except Exception as e:
         pipeline_status = "failed"
-        pipeline_error = str(e)
+        pipeline_error  = str(e)
         print(f"Pipeline failed: {e}")
-        raise  # re-raise so Prefect marks the run as Failed
+        raise
 
     finally:
-        # Always runs — success or failure
         if DATABASE_URL:
-            print("Writing ingestion log...")
             write_ingestion_log(events, DATABASE_URL, pipeline_status, pipeline_error)
         else:
-            print("No DATABASE_URL found; skipping ingestion_log writes.")
+            print("No DATABASE_URL — skipping ingestion_log.")
 
 
 @flow
