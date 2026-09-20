@@ -1,16 +1,5 @@
-name: game-market-intelligence
+# Local infrastructure configuration.
+# RustFS decommissioned 2026-09-20 — replaced by AWS S3.
+# Reserved for future local services if needed.
 
-services:
-  rustfs:
-    image: rustfs/rustfs:latest
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
-      - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
-    volumes:
-      - rustfs_data:/data
-
-volumes:
-  rustfs_data:
+services: {}
