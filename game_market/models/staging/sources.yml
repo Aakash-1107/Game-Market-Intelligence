@@ -33,6 +33,19 @@ sources:
           - name: name
             description: "Application name as returned by Steam"
           
+      - name: app_details
+        description: "Raw Steam appdetails JSON, one file per game per ingestion run"
+        columns:
+          - name: steam_app_id
+            description: "Steam App ID — matches game_source_mapping"
+          - name: fetched_at_utc
+            description: "UTC timestamp when the file was written"
+          - name: data
+            description: "Full appdetails payload from Steam Store API"
+        tests:
+          - not_null:
+              column_name: steam_app_id
+      
   - name: itad_raw
     description: "Raw ITAD price history JSON files from S3"
     tables:
