@@ -85,3 +85,26 @@ models:
           - not_null
           - accepted_values:
               values: [true, false]
+
+  - name: fact_critic_review
+    description: "One row per critic review per game. Grain: one outlet review of one game at one published date."
+    columns:
+      - name: critic_review_key
+        tests:
+          - not_null
+          - unique
+      - name: game_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_game')
+              field: game_key
+      - name: np_score
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: published_at
+        tests:
+          - not_null

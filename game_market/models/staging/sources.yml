@@ -53,3 +53,15 @@ sources:
         description: "One file per game per ingestion run containing full price history across all shops"
         meta:
           external_location: "s3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json"
+
+  - name: opencritic_raw
+    schema: main
+    tables:
+      - name: reviews
+        description: "Raw OpenCritic critic reviews, one file per game per run"
+        meta:
+          s3_path: "s3://game-market-raw/raw/opencritic/reviews/*/*/*/*.json"
+        columns:
+          - name: steam_app_id
+            tests:
+              - not_null

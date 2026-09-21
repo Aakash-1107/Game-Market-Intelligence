@@ -29,3 +29,26 @@ models:
         description: "Observation timestamp"
         tests:
           - not_null
+
+  - name: stg_opencritic__reviews
+    description: "Critic reviews from OpenCritic via RapidAPI, English only, scored reviews only"
+    columns:
+      - name: review_id
+        tests:
+          - not_null
+          - unique
+      - name: steam_app_id
+        tests:
+          - not_null
+      - name: published_at
+        tests:
+          - not_null
+      - name: np_score
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: outlet_id
+        tests:
+          - not_null
