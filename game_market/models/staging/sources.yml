@@ -65,3 +65,18 @@ sources:
           - name: steam_app_id
             tests:
               - not_null
+
+
+  - name: kaggle_raw
+    description: "Static third-party dataset from Kaggle — not re-fetchable on a schedule"
+    tables:
+      - name: steamcharts_monthly
+        description: "Monthly avg/peak player counts, 6,729 games, Aug 2012–Sept 2025 (CC0, Victor Laputsky)"
+        meta:
+          external_location: "read_csv('s3://game-market-raw/raw/kaggle/steamcharts_monthly_players/steamcharts.csv', all_varchar=true, header=true)"
+          
+        columns:
+          - name: steam_appid
+            description: "Steam App ID as string — cast to bigint in staging"
+          - name: month
+            description: "Text month-year like 'Sep-25' — parsed to date in staging"
