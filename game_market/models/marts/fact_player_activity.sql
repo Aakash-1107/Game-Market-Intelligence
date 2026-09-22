@@ -2,9 +2,9 @@ with player_counts as (
 
     select
         steam_app_id,
-        game_name,
         player_count,
-        recorded_at
+        recorded_at,
+        data_resolution
 
     from {{ ref('stg_steam__player_counts') }}
 
@@ -28,10 +28,9 @@ final as (
         )                           as activity_key,
         g.game_key,
         p.steam_app_id,
-        p.game_name,
         p.player_count,
         p.recorded_at,
-        'hourly'::varchar           as data_resolution
+        p.data_resolution
 
     from player_counts p
     inner join games g

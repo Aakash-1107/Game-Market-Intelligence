@@ -1,0 +1,37 @@
+version: 2
+
+seeds:
+  - name: tracked_games
+    config:
+      column_types:
+        steam_app_id: varchar
+        game_name: varchar
+    columns:
+      - name: steam_app_id
+        tests:
+          - unique
+          - not_null
+      - name: game_name
+        tests:
+          - not_null
+
+  - name: source_id_mappings
+    config:
+      column_types:
+        steam_app_id: varchar
+        source: varchar
+        source_game_id: varchar
+        resolution_type: varchar
+        notes: varchar
+    columns:
+      - name: steam_app_id
+        tests:
+          - not_null
+      - name: source
+        tests:
+          - not_null
+      - name: resolution_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['auto', 'manual', 'no_coverage']
