@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: int_price_daily
+    description: One row per tracked game per calendar day (UTC) of Steam price, forward-filled between ITAD price events.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [steam_app_id, price_date]
+    columns:
+      - name: price_amount
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: discount_pct
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+  - name: int_player_activity_daily
+    description: One row per tracked game per calendar day (UTC) of player activity.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [steam_app_id, activity_date]
+
+  - name: int_game_first_observed
+    description: One row per tracked game with its first observed activity date.
+    columns:
+      - name: steam_app_id
+        tests:
+          - unique
+          - not_null
