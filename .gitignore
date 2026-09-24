@@ -80,3 +80,5 @@ rustfs_logs.txt
 duckdb_inspect.py
 test_opencritic.py
 .claude/
+
+exploration/handoff_*.md

@@ -89,3 +89,21 @@ models:
           - accepted_values:
               arguments:
                 values: ['no_lift', 'returned_to_baseline', 'elevated_after', 'below_baseline_after']
+  - name: an_market_anomalies
+    description: "Q4 anomalies. One row per game-day, 21-game 5-min backfill scope (Dec 2017-Aug 2020). z-score vs trailing 28-day baseline."
+    columns:
+      - name: anomaly_key
+        data_tests:
+          - unique
+          - not_null
+      - name: anomaly_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['scored', 'insufficient_baseline']
+      - name: direction
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['spike', 'drop']
