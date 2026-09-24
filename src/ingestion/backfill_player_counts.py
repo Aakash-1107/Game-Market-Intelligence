@@ -18,20 +18,22 @@ What it does:
 
 import os
 import io
+import sys
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
 
 import pandas as pd
 import boto3
-import duckdb
 import psycopg2
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
 
 load_dotenv()
 
 # --- Configuration ---
-DUCKDB_PATH = r"C:\Users\isabe\Desktop\Weiterbildung\Capstone Project\data\game_market.duckdb"
 PART1_DIR = Path(r"C:\Users\isabe\Downloads\PLayerCountData\PlayerCountHistoryPart1\PlayerCountHistoryPart1")
 
 AWS_BUCKET = os.environ["AWS_BUCKET"]
@@ -49,15 +51,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 log = logging.getLogger(__name__)
-
-
-def get_tracked_app_ids(duckdb_path: str) -> set[int]:
-    con = duckdb.connect(duckdb_path)
-    rows = con.execute(
-        "SELECT DISTINCT CAST(steam_app_id AS INTEGER) FROM source_id_mappings"
-    ).fetchall()
-    con.close()
-    return {row[0] for row in rows}
 
 
 def get_s3_client():
@@ -154,7 +147,7 @@ def log_to_neon(pg_conn, app_id: int, s3_key: str,
 def main():
     log.info("=== Player Count Backfill — Part1 (5min) ===")
 
-    tracked = get_tracked_app_ids(DUCKDB_PATH)
+    tracked = set(load_tracked_app_ids())
     s3_client = get_s3_client()
     pg_conn = get_pg_connection()
 

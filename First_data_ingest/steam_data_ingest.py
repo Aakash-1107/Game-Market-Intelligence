@@ -1,6 +1,8 @@
 import io
 import os
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import boto3
@@ -10,67 +12,14 @@ import requests
 from dotenv import load_dotenv
 from prefect import flow
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.common.tracked_games import load_tracked_games  # noqa: E402
+
 load_dotenv(override=True)
 
 URL = "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/"
 
-GAMES = {
-    251570: "7 Days to Die",
-    1172470: "Apex Legends",
-    1086940: "Baldur's Gate 3",
-    2807960: "Battlefield 6",
-    3419430: "Bongo Cat",
-    255710: "Cities: Skylines",
-    3321460: "Crimson Desert",
-    730: "CS2",
-    1091500: "Cyberpunk 2077",
-    374320: "Dark Souls III",
-    221100: "DayZ",
-    588650: "Dead Cells",
-    435150: "Divinity: Original Sin 2",
-    570: "Dota 2",
-    239140: "Dying Light",
-    3405690: "EA Sports FC 26",
-    1245620: "Elden Ring",
-    3932890: "Escape from Tarkov",
-    227300: "Euro Truck Simulator 2",
-    427520: "Factorio",
-    377160: "Fallout 4",
-    39210: "Final Fantasy XIV",
-    2483190: "Forza Horizon 6",
-    3240220: "GTA V",
-    394360: "Hearts of Iron IV",
-    553850: "Helldivers 2",
-    4001890: "How to Fish",
-    2767030: "Marvel Rivals",
-    2246340: "Monster Hunter Wilds",
-    275850: "No Man's Sky",
-    2638890: "Onimusha: Way of the Sword",
-    2357570: "Overwatch",
-    1623730: "Palworld",
-    238960: "Path of Exile",
-    2694490: "Path of Exile 2",
-    218620: "Payday 2",
-    578080: "PUBG",
-    359550: "Rainbow Six Siege",
-    1174180: "Red Dead Redemption 2",
-    294100: "RimWorld",
-    252490: "Rust",
-    489830: "Skyrim SE",
-    646570: "Slay the Spire",
-    413150: "Stardew Valley",
-    281990: "Stellaris",
-    1364780: "Street Fighter 6",
-    264710: "Subnautica",
-    3678970: "TBH: Task Bar Hero",
-    105600: "Terraria",
-    3751260: "The Blood of Dawnwalker",
-    1222670: "The Sims 4",
-    292030: "The Witcher 3",
-    892970: "Valheim",
-    236390: "War Thunder",
-    230410: "Warframe",
-}
+GAMES = load_tracked_games()
 
 DATABASE_URL   = os.getenv("DATABASE_URL")
 AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")

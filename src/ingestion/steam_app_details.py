@@ -1,13 +1,18 @@
 # src/ingestion/steam_app_details.py
 
 import os
+import sys
 import json
 import time
 import boto3
 import requests
 import psycopg2
 from datetime import datetime, timezone
+from pathlib import Path
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
 
 load_dotenv()
 
@@ -19,14 +24,6 @@ AWS_BUCKET     = os.getenv("AWS_BUCKET")
 
 APPDETAILS_URL = "https://store.steampowered.com/api/appdetails"
 SLEEP_SECONDS  = 1.5   # Steam's unofficial rate limit ~200 req/5 min; 1.5s is safe
-
-
-def get_steam_app_ids(conn) -> list[int]:
-    """Return the distinct Steam App IDs tracked in Neon."""
-    with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT steam_app_id FROM game_source_mapping ORDER BY steam_app_id")
-        rows = cur.fetchall()
-    return [row[0] for row in rows]
 
 
 def fetch_app_details(steam_app_id: int) -> dict | None:
@@ -122,8 +119,8 @@ def main():
         aws_secret_access_key=AWS_SECRET_KEY,
     )
 
-    app_ids = get_steam_app_ids(conn)
-    print(f"Loaded {len(app_ids)} Steam App IDs from Neon")
+    app_ids = load_tracked_app_ids()
+    print(f"Loaded {len(app_ids)} Steam App IDs from tracked_games.csv")
 
     succeeded = []
     failed    = []

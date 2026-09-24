@@ -6,23 +6,15 @@ Run from the project root:
     python src/utils/check_backfill_overlap.py
 """
 
+import sys
 from pathlib import Path
-import duckdb
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
 
 # --- Configuration ---
-DUCKDB_PATH = r"C:\Users\isabe\Desktop\Weiterbildung\Capstone Project\data\game_market.duckdb"
 PART1_DIR = Path(r"C:\Users\isabe\Downloads\PLayerCountData\PlayerCountHistoryPart1\PlayerCountHistoryPart1")
 PART2_DIR = Path(r"C:\Users\isabe\Downloads\PLayerCountData\PlayerCountHistoryPart2\PlayerCountHistoryPart2")
-
-
-def get_tracked_app_ids(duckdb_path: str) -> set[int]:
-    con = duckdb.connect(duckdb_path)
-    rows = con.execute(
-        "SELECT DISTINCT CAST(steam_app_id AS INTEGER) "
-        "FROM source_id_mappings"
-    ).fetchall()
-    con.close()
-    return {row[0] for row in rows}
 
 
 def get_app_ids_from_directory(directory: Path) -> dict[int, Path]:
@@ -63,8 +55,8 @@ def report_overlap(label: str, tracked: set[int], available: dict[int, Path]) ->
 
 
 def main():
-    print("Loading tracked App IDs from DuckDB...")
-    tracked = get_tracked_app_ids(DUCKDB_PATH)
+    print("Loading tracked App IDs from tracked_games.csv...")
+    tracked = set(load_tracked_app_ids())
     print(f"Found {len(tracked)} tracked steam_app_ids.")
 
     part1_files = get_app_ids_from_directory(PART1_DIR)

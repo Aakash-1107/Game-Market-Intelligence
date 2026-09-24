@@ -21,17 +21,19 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import boto3
-import duckdb
 import psycopg2
 import requests
 from dotenv import load_dotenv
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
+
 load_dotenv()
 
 # --- Configuration ---
-DUCKDB_PATH = os.environ["DUCKDB_PATH"]
 AWS_ACCESS_KEY = os.environ["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY = os.environ["AWS_SECRET_KEY"]
 AWS_REGION = os.environ["AWS_REGION"]
@@ -61,17 +63,6 @@ class HistogramFetchError(Exception):
     def __init__(self, message: str, http_status: int | None = None):
         super().__init__(message)
         self.http_status = http_status
-
-
-def get_tracked_app_ids(duckdb_path: str) -> list[int]:
-    con = duckdb.connect(duckdb_path, read_only=True)
-    try:
-        rows = con.execute(
-            "SELECT DISTINCT CAST(steam_app_id AS INTEGER) FROM source_id_mappings"
-        ).fetchall()
-    finally:
-        con.close()
-    return sorted(row[0] for row in rows)
 
 
 def get_s3_client():
@@ -210,7 +201,7 @@ def main() -> int:
     args = parse_args()
     log.info("=== Steam Review Histogram Ingestion ===")
 
-    app_ids = args.app_ids or get_tracked_app_ids(DUCKDB_PATH)
+    app_ids = args.app_ids or load_tracked_app_ids()
     log.info(f"Games to fetch: {len(app_ids)}")
 
     s3_client = get_s3_client()

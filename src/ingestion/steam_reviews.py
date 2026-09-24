@@ -9,21 +9,23 @@ Run from project root:
 
 import os
 import json
+import sys
 import time
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 import boto3
-import duckdb
 import psycopg2
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
 
 load_dotenv()
 
 # --- Configuration ---
-DUCKDB_PATH = r"C:\Users\isabe\Desktop\Weiterbildung\Capstone Project\data\game_market.duckdb"
-
 AWS_ACCESS_KEY = os.environ["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY = os.environ["AWS_SECRET_KEY"]
 AWS_REGION = os.environ["AWS_REGION"]
@@ -39,15 +41,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 log = logging.getLogger(__name__)
-
-
-def get_tracked_app_ids(duckdb_path: str) -> list[int]:
-    con = duckdb.connect(duckdb_path)
-    rows = con.execute(
-        "SELECT DISTINCT CAST(steam_app_id AS INTEGER) FROM source_id_mappings"
-    ).fetchall()
-    con.close()
-    return sorted([row[0] for row in rows])
 
 
 def get_s3_client():
@@ -176,7 +169,7 @@ def log_to_neon(pg_conn, app_id: int, rows: int,
 def main():
     log.info("=== Steam Reviews Ingestion ===")
 
-    app_ids = get_tracked_app_ids(DUCKDB_PATH)
+    app_ids = load_tracked_app_ids()
     log.info(f"Tracked games: {len(app_ids)}")
 
     s3_client = get_s3_client()

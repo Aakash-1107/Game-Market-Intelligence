@@ -1,6 +1,6 @@
 """SteamCharts monthly player history ingestion.
 
-For every game in dim_game: fetch https://steamcharts.com/app/{app_id}, store the raw
+For every game in game_market/seeds/tracked_games.csv: fetch https://steamcharts.com/app/{app_id}, store the raw
 HTML and the extracted monthly table (values kept as text) in S3, and log one row per
 game to ingestion_log (Neon). Numeric parsing happens in dbt staging.
 """
@@ -10,13 +10,16 @@ import sys
 import time
 from datetime import datetime, timezone
 from io import StringIO
+from pathlib import Path
 
 import boto3
-import duckdb
 import pandas as pd
 import psycopg2
 import requests
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
 
 load_dotenv()
 
@@ -32,22 +35,12 @@ RETRY_STATUSES = {429, 500, 502, 504}
 EXPECTED_COLUMNS = ["Month", "Avg. Players", "Gain", "% Gain", "Peak Players"]
 OUTPUT_COLUMNS = ["month_label", "avg_players", "gain", "gain_pct", "peak_players"]
 
-DUCKDB_PATH = os.getenv("DUCKDB_PATH", "data/game_market.duckdb")
 DATABASE_URL = os.getenv("DATABASE_URL")
 NEON_URL_ENV = "DATABASE_URL"
 
 
 class BotChallengeError(RuntimeError):
     """Raised when the site serves a bot-protection challenge. The run must stop."""
-
-
-def get_app_ids() -> list[int]:
-    con = duckdb.connect(DUCKDB_PATH, read_only=True)
-    try:
-        rows = con.execute("select steam_app_id from dim_game order by steam_app_id").fetchall()
-    finally:
-        con.close()
-    return [int(r[0]) for r in rows]
 
 
 def check_robots(session: requests.Session) -> None:
@@ -126,7 +119,7 @@ def main() -> int:
     counts = {"success": 0, "not_found": 0, "failed": 0}
     try:
         check_robots(session)
-        app_ids = get_app_ids()
+        app_ids = load_tracked_app_ids()
         print(f"{len(app_ids)} games to fetch")
 
         for app_id in app_ids:
