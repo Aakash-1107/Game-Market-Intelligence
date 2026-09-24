@@ -52,3 +52,13 @@ models:
       - name: outlet_id
         tests:
           - not_null
+
+  - name: stg_steamcharts__monthly
+    description: "SteamCharts monthly table per game (scraped 2026-09-24). Grain: one game per calendar month, latest fetch wins."
+    columns:
+      - name: steam_app_id
+        data_tests:
+          - not_null
+      - name: activity_month
+        data_tests:
+          - not_null

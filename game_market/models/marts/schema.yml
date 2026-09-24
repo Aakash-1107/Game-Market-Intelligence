@@ -108,3 +108,30 @@ models:
       - name: published_at
         tests:
           - not_null
+
+  - name: fact_player_activity_monthly
+    description: "One row per game per calendar month. SteamCharts scrape preferred; Kaggle fills game-months SteamCharts lacks."
+    columns:
+      - name: activity_monthly_key
+        data_tests:
+          - not_null
+          - unique
+      - name: game_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: game_key
+      - name: steam_app_id
+        data_tests:
+          - not_null
+      - name: activity_month
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['steamcharts', 'kaggle']

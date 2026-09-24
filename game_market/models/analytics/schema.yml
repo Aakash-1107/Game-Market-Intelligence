@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: an_game_lifecycle
+    description: >
+      Q1 lifecycle metrics. One row per game in dim_game. Metrics populated only when
+      lifecycle_status = 'launch_observed'. month_index 0 = release month.
+      Retention and recovery are relative to the launch peak (months 0-3).
+    columns:
+      - name: game_key
+        data_tests:
+          - unique
+          - not_null
+      - name: lifecycle_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['launch_observed', 'launch_not_observed', 'no_monthly_data',
+                         'no_release_date', 'released_after_coverage']
+      - name: launch_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['fresh_launch', 'pre_release_base']
+      - name: lifecycle_pattern
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['front_loaded', 'gradual_decline', 'sustained', 'growing',
+                         'insufficient_history']
+      - name: retention_m12
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: lowest_vs_launch_peak
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0

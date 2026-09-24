@@ -3,7 +3,6 @@ version: 2
 sources:
   - name: steam_raw
     description: "Raw Steam data stored in RustFS object storage"
-    # DELETE the meta block below — it overrides the table-level external locations
     tables:
       - name: player_counts
         description: "Hourly concurrent player counts per game, ingested via Prefect"
@@ -80,3 +79,9 @@ sources:
             description: "Steam App ID as string — cast to bigint in staging"
           - name: month
             description: "Text month-year like 'Sep-25' — parsed to date in staging"
+
+  - name: steamcharts_raw
+    tables:
+      - name: monthly
+        meta:
+          external_location: "read_parquet('s3://game-market-raw/raw/steamcharts/monthly/*/*/*/*.parquet', union_by_name = true)"
