@@ -145,6 +145,13 @@ recovery as (
         bool_or(month_index > 12 and avg_players > launch_peak_avg) as has_new_high_after_year1
     from after_launch_windows
     group by steam_app_id
+),
+
+release_context as (
+    select
+        cast(steam_app_id as integer) as steam_app_id,
+        steam_release_context
+    from {{ ref('seed_steam_release_context') }}
 )
 
 select
@@ -155,6 +162,7 @@ select
     s.first_month,
     s.last_month,
     s.lifecycle_status,
+    coalesce(ctx.steam_release_context, 'original_launch') as steam_release_context,
 
     coalesce(pr.pre_release_months, 0) as pre_release_months,
     pr.pre_release_peak_avg,
@@ -201,3 +209,4 @@ left join pre_release pr on s.steam_app_id = pr.steam_app_id
 left join launch      l  on s.steam_app_id = l.steam_app_id
 left join summary     su on s.steam_app_id = su.steam_app_id
 left join recovery    rc on s.steam_app_id = rc.steam_app_id
+left join release_context ctx on s.steam_app_id = ctx.steam_app_id

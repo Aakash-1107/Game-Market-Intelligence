@@ -35,3 +35,20 @@ seeds:
           - not_null
           - accepted_values:
               values: ['auto', 'manual', 'no_coverage']
+
+  - name: seed_steam_release_context
+    description: "Human-curated. Games whose Steam release is not their original launch. Games not listed are treated as original_launch."
+    config:
+      column_types:
+        steam_app_id: integer
+    columns:
+      - name: steam_app_id
+        data_tests:
+          - unique
+          - not_null
+      - name: steam_release_context
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['later_steam_release', 'rerelease']
