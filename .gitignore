@@ -82,3 +82,4 @@ test_opencritic.py
 .claude/
 
 exploration/handoff_*.md
+exploration/streamlit_changes.md

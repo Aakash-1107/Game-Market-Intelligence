@@ -6,9 +6,8 @@ sources:
     tables:
       - name: player_counts
         description: "Hourly concurrent player counts per game, ingested via Prefect"
-        external:
-          location: "s3://game-market-raw/raw/steam/player_counts/**/*.parquet"
-          format: parquet
+        meta:
+          external_location: "read_parquet('s3://game-market-raw/raw/steam/player_counts/[0-9][0-9][0-9][0-9]/**/*.parquet')"
         columns:
           - name: id
             description: "Row ID from Neon — not meaningful in the analytical layer"
@@ -23,9 +22,8 @@ sources:
 
       - name: app_list
         description: "Full Steam app catalogue — appid and name for all Steam applications"
-        external:
-          location: "s3://game-market-raw/raw/steam/app_list/steam_app_list.csv"
-          format: csv
+        meta:
+          external_location: "read_csv_auto('s3://game-market-raw/raw/steam/app_list/steam_app_list.csv')"
         columns:
           - name: appid
             description: "Steam App ID"
@@ -34,6 +32,8 @@ sources:
           
       - name: app_details
         description: "Raw Steam appdetails JSON, one file per game per ingestion run"
+        meta:
+          external_location: "read_json('s3://game-market-raw/raw/steam/app_details/*/*/*/app_details_*.json', union_by_name = true, ignore_errors = true)"
         columns:
           - name: steam_app_id
             description: "Steam App ID — matches game_source_mapping"
@@ -54,12 +54,11 @@ sources:
           external_location: "s3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json"
 
   - name: opencritic_raw
-    schema: main
     tables:
       - name: reviews
         description: "Raw OpenCritic critic reviews, one file per game per run"
         meta:
-          s3_path: "s3://game-market-raw/raw/opencritic/reviews/*/*/*/*.json"
+          external_location: "read_json('s3://game-market-raw/raw/opencritic/reviews/*/*/*/*.json', format = 'auto', union_by_name = true)"
         columns:
           - name: steam_app_id
             tests:

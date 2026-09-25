@@ -4,7 +4,8 @@ Collects up to 1,000 reviews per game (10 pages x 100) in English.
 Logs each game to ingestion_log on Neon.
 
 Run from project root:
-    python src/ingestion/steam_reviews.py
+    python src/ingestion/steam_reviews.py                  # all tracked games
+    python src/ingestion/steam_reviews.py 413150 427520    # only these (must be tracked)
 """
 
 import os
@@ -172,16 +173,31 @@ def main():
     app_ids = load_tracked_app_ids()
     log.info(f"Tracked games: {len(app_ids)}")
 
+    requested = [int(a) for a in sys.argv[1:]]
+    if requested:
+        untracked = set(requested) - set(app_ids)
+        if untracked:
+            sys.exit(f"Not in tracked_games.csv: {sorted(untracked)}")
+        app_ids = requested
+        log.info(f"Restricted to {len(app_ids)} requested games")
+
     s3_client = get_s3_client()
     pg_conn = get_pg_connection()
 
     success_count = 0
+    skipped_count = 0
     fail_count = 0
 
     for app_id in app_ids:
         log.info(f"Fetching reviews for {app_id}...")
         try:
             reviews, query_summary = fetch_reviews_for_game(app_id)
+            if not reviews:
+                log.warning(f"  [{app_id}] SKIPPED: 0 reviews returned")
+                log_to_neon(pg_conn, app_id, 0, "skipped", "0 reviews returned")
+                skipped_count += 1
+                time.sleep(SLEEP_BETWEEN_GAMES)
+                continue
             s3_key = write_to_s3(s3_client, app_id, reviews, query_summary, AWS_BUCKET)
             log_to_neon(pg_conn, app_id, len(reviews), "success")
             log.info(f"  [{app_id}] {len(reviews)} reviews → s3://{AWS_BUCKET}/{s3_key}")
@@ -199,6 +215,7 @@ def main():
     pg_conn.close()
     log.info("=== Done ===")
     log.info(f"  Succeeded : {success_count}")
+    log.info(f"  Skipped   : {skipped_count}  (0 reviews)")
     log.info(f"  Failed    : {fail_count}")
 
 

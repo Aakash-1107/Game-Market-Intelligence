@@ -1,0 +1,8 @@
+# Read when Streamlit is started from the project root:  streamlit run dashboard/home.py
+# Light theme is fixed so the validated chart colours render as designed during the presentation.
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+# Warm off-white instead of pure white to cut glare; gridlines (#e1e0d9) stay visible against it.
+backgroundColor = "#f7f6f2"
+secondaryBackgroundColor = "#ecebe4"

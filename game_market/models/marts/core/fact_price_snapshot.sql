@@ -28,7 +28,7 @@ final AS (
         d.currency,
         CASE WHEN d.discount_pct > 0 THEN TRUE ELSE FALSE END AS is_on_sale
     FROM deduplicated d
-    LEFT JOIN {{ ref('dim_game') }} g
+    INNER JOIN {{ ref('dim_game') }} g
         ON d.steam_app_id = g.steam_app_id
 )
 

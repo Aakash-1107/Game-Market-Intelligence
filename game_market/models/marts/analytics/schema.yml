@@ -107,3 +107,13 @@ models:
           - accepted_values:
               arguments:
                 values: ['spike', 'drop']
+      - name: games_flagged_same_day
+        description: "For anomaly rows: how many games had an anomaly in the same direction that day (including this one)."
+      - name: is_market_wide
+        description: "Anomaly shared by >=3 games in the same direction that day — likely a platform-wide cause (e.g. Steam outage), not game-specific."
+        data_tests:
+          - not_null
+      - name: sale_discount_pct
+        description: "Max discount of the Steam sale episode covering this day; null when not on sale."
+      - name: sale_start
+        description: "First day of the sale episode covering this day; null when not on sale."

@@ -127,7 +127,6 @@ The tracked catalogue comprises ~50 games in two tiers:
 | 230410 | Warframe | Free-to-play — no price signals, pure engagement |
 | 236390 | War Thunder | Free-to-play contrast to paid titles |
 | 238960 | Path of Exile | League releases create periodic spikes |
-| 239140 | Dying Light | Strong sale-spike, clear pre/post baseline shift |
 | 251570 | 7 Days to Die | 10-year early access, unique lifecycle shape |
 | 252490 | Rust | Well-documented sale spikes and baseline shifts |
 | 255710 | Cities: Skylines | Long stable tail, modding community effect |
