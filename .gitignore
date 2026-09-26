@@ -81,5 +81,5 @@ duckdb_inspect.py
 test_opencritic.py
 .claude/
 
-exploration/handoff_*.md
-exploration/streamlit_changes.md
+# Exploration: one-off probes, handoffs and working notes (not part of the pipeline)
+exploration/

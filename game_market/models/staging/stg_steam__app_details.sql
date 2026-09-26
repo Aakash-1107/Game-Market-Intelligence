@@ -1,11 +1,7 @@
 with raw as (
 
     select *
-    from read_json(
-        's3://{{ env_var("AWS_BUCKET") }}/raw/steam/app_details/*/*/*/app_details_*.json',
-        union_by_name = true,
-        ignore_errors = true
-    )
+    from {{ source('steam_raw', 'app_details') }}
 
 ),
 

@@ -44,14 +44,28 @@ sources:
         tests:
           - not_null:
               column_name: steam_app_id
-      
+
+      - name: reviews
+        description: "Raw Steam appreviews JSON, one file per game per ingestion run. Each file holds a query_summary (lifetime totals) and a reviews array (sampled individual reviews)."
+        meta:
+          external_location: "read_json('s3://game-market-raw/raw/steam/reviews/*/*/*/*reviews_*.json', format = 'auto')"
+        columns:
+          - name: steam_app_id
+            description: "Steam App ID"
+          - name: fetched_at
+            description: "Timestamp when the file was fetched"
+          - name: query_summary
+            description: "Lifetime review totals for the game — used by stg_steam__reviews_summary"
+          - name: reviews
+            description: "Array of individual reviews — unnested in stg_steam__reviews"
+
   - name: itad_raw
     description: "Raw ITAD price history JSON files from S3"
     tables:
       - name: price_history
         description: "One file per game per ingestion run containing full price history across all shops"
         meta:
-          external_location: "s3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json"
+          external_location: "read_json('s3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json', format = 'auto')"
 
   - name: opencritic_raw
     tables:

@@ -4,11 +4,7 @@ with raw as (
         opencritic_id,
         fetched_at_utc::timestamptz                         as fetched_at_utc,
         unnest(reviews)                                     as review
-    from read_json(
-        's3://game-market-raw/raw/opencritic/reviews/*/*/*/*.json',
-        format        = 'auto',
-        union_by_name = true
-    )
+    from {{ source('opencritic_raw', 'reviews') }}
 ),
 
 extracted as (

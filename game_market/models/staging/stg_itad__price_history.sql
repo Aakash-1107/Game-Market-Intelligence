@@ -1,9 +1,6 @@
 WITH source AS (
     SELECT unnest(records) AS r
-    FROM read_json(
-        's3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json',
-        format = 'auto'
-    )
+    from {{ source('itad_raw', 'price_history') }}
 ),
 
 renamed AS (

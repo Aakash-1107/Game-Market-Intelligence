@@ -2,6 +2,7 @@ version: 2
 
 seeds:
   - name: tracked_games
+    description: "Human-curated. Authoritative list of tracked games: drives the Python ingestion scripts and filters dim_game (and through it every fact)."
     config:
       column_types:
         steam_app_id: varchar
@@ -16,6 +17,18 @@ seeds:
           - not_null
 
   - name: source_id_mappings
+    description: >
+      Reference/audit artifact only — not read by any dbt model or Python script.
+      Snapshot of the Steam App ID → ITAD / OpenCritic ID resolution done at project setup.
+      The live mapping used by ingestion is the Neon table game_source_mapping
+      (read by src/ingestion/itad_price_history.py and opencritic_reviews.py).
+      dbt does not need it: the raw ITAD and OpenCritic files already carry steam_app_id
+      in their contents. Known stale: incomplete ITAD/OpenCritic coverage, still lists
+      Dying Light (239140), which was dropped from tracked_games on 2026-09-25.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['steam_app_id', 'source']
     config:
       column_types:
         steam_app_id: varchar
@@ -27,6 +40,17 @@ seeds:
       - name: steam_app_id
         tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('tracked_games')
+                field: steam_app_id
+              config:
+                severity: warn   # 239140 Dying Light is a known stale row
+      - name: source_game_id
+        data_tests:
+          - not_null:
+              config:
+                where: "resolution_type <> 'no_coverage'"
       - name: source
         tests:
           - not_null

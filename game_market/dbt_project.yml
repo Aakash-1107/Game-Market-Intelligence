@@ -30,9 +30,17 @@ models:
   game_market:
     staging:
       +materialized: view
+      +docs: {node_color: "#3A7CA5"}    # blue
     intermediate:
       +materialized: table
+      +docs: {node_color: "#C9A227"}    # gold
     marts:
       +materialized: table
-      core: {}
-      analytics: {}
+      core:
+        +docs: {node_color: "#2E8B57"}  # green — facts & dims
+      analytics:
+        +docs: {node_color: "#B5446E"}  # raspberry — an_* question models
+
+seeds:
+  game_market:
+    +docs: {node_color: "#7B5EA7"}      # purple — human-curated inputs

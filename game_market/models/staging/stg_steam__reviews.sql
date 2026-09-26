@@ -1,10 +1,7 @@
 with source as (
 
     select *
-    from read_json(
-        's3://game-market-raw/raw/steam/reviews/*/*/*/*reviews_*.json',
-        format = 'auto'
-    )
+    from {{ source('steam_raw', 'reviews') }}
 
 ),
 

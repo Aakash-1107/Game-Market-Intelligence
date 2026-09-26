@@ -1,0 +1,101 @@
+version: 2
+
+# One exposure per Streamlit page (dashboard/home.py navigation).
+# depends_on = tables each page actually queries, including via the shared helpers in
+# dashboard/common.py: coverage() -> fact_player_activity, fact_player_activity_monthly;
+# live_snapshot() -> fact_player_activity, fact_player_activity_monthly, dim_game;
+# daily_activity() -> fact_player_activity.
+
+exposures:
+  - name: dashboard_market_overview
+    label: "Dashboard — Market overview"
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit page dashboard/views/0_Overview.py (default page). Headline counts,
+      data coverage, live hourly snapshot per game and genre mix.
+    owner:
+      name: Ash
+    depends_on:
+      - ref('dim_game')
+      - ref('fact_player_activity')
+      - ref('fact_player_activity_monthly')
+      - ref('fact_price_snapshot')
+      - ref('fact_reviews')
+
+  - name: dashboard_life_after_launch
+    label: "Dashboard — Life after launch (Q1)"
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit page dashboard/views/1_Lifecycle.py. Lifecycle patterns: how player
+      counts develop in the months after launch.
+    owner:
+      name: Ash
+    depends_on:
+      - ref('an_game_lifecycle')
+      - ref('fact_player_activity_monthly')
+      - ref('fact_player_activity')
+
+  - name: dashboard_activity_health
+    label: "Dashboard — Activity health (Q2)"
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit page dashboard/views/2_Activity_Health.py. Health class per game
+      (growing, stable, declining, volatile) from recent monthly activity.
+    owner:
+      name: Ash
+    depends_on:
+      - ref('an_activity_health')
+      - ref('fact_player_activity_monthly')
+
+  - name: dashboard_do_sales_bring_players
+    label: "Dashboard — Do sales bring players (Q3)"
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit page dashboard/views/3_Sale_Effect.py showing player activity before,
+      during and after sale periods.
+    owner:
+      name: Ash
+    depends_on:
+      - ref('an_sale_effect')
+      - ref('dim_game')
+      - ref('fact_player_activity')
+      - ref('fact_player_activity_monthly')
+
+  - name: dashboard_unusual_days
+    label: "Dashboard — Unusual days (Q4)"
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit page dashboard/views/4_Market_Events.py. Days with anomalous player
+      activity (z-score vs 28-day baseline), flagged against sales and Steam-wide events.
+    owner:
+      name: Ash
+    depends_on:
+      - ref('an_market_anomalies')
+      - ref('an_sale_effect')
+      - ref('dim_game')
+      - ref('fact_player_activity')
+      - ref('fact_player_activity_monthly')
+
+  - name: dashboard_game_explorer
+    label: "Dashboard — Game explorer"
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit page dashboard/views/5_Game_Explorer.py. Per-game drill-down: activity,
+      lifecycle and health class, price history, user and critic reviews.
+    owner:
+      name: Ash
+    depends_on:
+      - ref('dim_game')
+      - ref('an_game_lifecycle')
+      - ref('an_activity_health')
+      - ref('fact_player_activity')
+      - ref('fact_player_activity_monthly')
+      - ref('fact_price_snapshot')
+      - ref('fact_reviews')
+      - ref('fact_critic_review')
