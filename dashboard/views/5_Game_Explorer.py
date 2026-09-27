@@ -63,25 +63,21 @@ k = query("""
     select
       (select max(avg_players) from fact_player_activity_monthly where steam_app_id = $1) as best_month,
       (select avg(voted_up::int) from fact_reviews where steam_app_id = $1) as positive,
-      (select count(*) from fact_reviews where steam_app_id = $1) as n_reviews,
-      (select avg(raw_score) from fact_critic_review where steam_app_id = $1 and score_base is not null) as critic,
-      (select count(*) from fact_critic_review where steam_app_id = $1 and score_base is not null) as n_critic
+      (select count(*) from fact_reviews where steam_app_id = $1) as n_reviews
 """, (app_id,)).iloc[0]
-m1, m2, m3, m4 = st.columns(4)
+m1, m2, m3 = st.columns(3)
 if live is not None:
     vs = live.vs_last_month
     m1.metric("Players online now", f"{live.now_players:,.0f}",
               f"{pct(vs, signed=True)} this week vs. {live.last_month:%b %Y}" if pd.notna(vs) else None,
               help=f"Latest hourly reading ({local(live.now_at):%d %b %Y, %H:%M}). The change compares the average "
-                   f"of the last 7 days ({live.avg_7d:,.0f}) with the last complete month's average.", border=True)
+                   f"of the last 7 days ({live.avg_7d:,.0f}) with the last complete month's average.", border=True, height="stretch")
 else:
-    m1.metric("Players online now", "—", help="No live readings for this game.", border=True)
+    m1.metric("Players online now", "—", help="No live readings for this game.", border=True, height="stretch")
 m2.metric("Busiest month ever", f"{k.best_month:,.0f}" if pd.notna(k.best_month) else "—",
-          help="Highest monthly average of players online at the same time.", border=True)
+          help="Highest monthly average of players online at the same time.", border=True, height="stretch")
 m3.metric("Positive reviews", f"{k.positive:.0%}" if k.n_reviews else "—",
-          help=f"Share of the {k.n_reviews:,} most recent Steam reviews that recommend the game.", border=True)
-m4.metric("Critic score", f"{k.critic:.0f} / 100" if k.n_critic else "Not covered",
-          help="Average score from professional reviewers (OpenCritic). Only 12 games are covered.", border=True)
+          help=f"Share of the {k.n_reviews:,} most recent Steam reviews that recommend the game.", border=True, height="stretch")
 
 # ---- Players over time --------------------------------------------------------------------------
 monthly = query("""select activity_month, avg_players from fact_player_activity_monthly
@@ -213,25 +209,4 @@ else:
         (bars + lbl).properties(height=260),
         "Early reviews show first impressions; long-time players' reviews show whether the game holds up. "
         "A big gap between the two tells you which kind of game this is.",
-    )
-
-# ---- Critic reviews (OpenCritic subset) ---------------------------------------------------------
-critic = query("""select outlet_name, raw_score, published_at from fact_critic_review
-                  where steam_app_id = ? and score_base is not null order by raw_score""", (app_id,))
-if critic.empty:
-    st.caption("Critic reviews: not covered — OpenCritic data was collected for 12 of the 54 games only.")
-else:
-    dots = alt.Chart(critic).mark_point(filled=True, size=120, color=INK_2, opacity=0.8, stroke="white", strokeWidth=1).encode(
-        x=alt.X("raw_score:Q", title="Critic score (out of 100)", scale=alt.Scale(domain=[0, 100])),
-        tooltip=[alt.Tooltip("outlet_name:N", title="Outlet"), alt.Tooltip("raw_score:Q", title="Score", format=".0f"),
-                 alt.Tooltip("published_at:T", title="Published", format="%d %b %Y")])
-    avg = alt.Chart(pd.DataFrame({"x": [critic["raw_score"].mean()]})).mark_rule(color=INK, strokeWidth=2).encode(x="x:Q")
-    spread = critic["raw_score"].quantile(0.9) - critic["raw_score"].quantile(0.1)
-    chart_block(
-        f"Critics give {game} {critic['raw_score'].mean():.0f}/100 on average across {len(critic)} reviews"
-        + (" — and they broadly agree" if spread <= 20 else " — but opinions are split"),
-        "Each dot is one professional review (hover for the outlet); the black line is the average. "
-        "All scores are converted to a 0–100 scale.",
-        (dots + avg).properties(height=110),
-        "Critics review a game once, usually at launch; player reviews above reflect the game as it is today.",
     )

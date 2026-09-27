@@ -83,3 +83,8 @@ test_opencritic.py
 
 # Exploration: one-off probes, handoffs and working notes (not part of the pipeline)
 exploration/
+
+# Local backups (folders and files), never committed
+*backup*
+*.bak
+*.orig

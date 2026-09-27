@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from common import (DOWN, INK, INK_2, MUTED, STEAM_WIDE, UP, chart_block, coverage, daily_activity, event_chart,
-                    game_image, local, page_header)
+from common import (DOWN, INK, INK_2, LEGEND_HINT, MUTED, STEAM_WIDE, UP, chart_block, coverage, daily_activity,
+                    event_chart, game_image, legend_filter, local, page_header)
 from db import query
 
 cov = coverage()
@@ -76,97 +76,113 @@ chart_block(
     "so part of the effect is the update, not the price.",
 )
 
-# ---- Chart 2: timeline of unusual days ---------------------------------------------------------
-n_s, n_d = int((flags["kind"] == "Unusual surge").sum()), int((flags["kind"] == "Unusual drop").sum())
-n_w = int(flags.loc[flags["is_market_wide"], "activity_date"].nunique())
 names = sorted(an["name"].unique())
-defaults = [g for g in ["Terraria", "Path of Exile", "No Man's Sky", "Counter-Strike 2", "PAYDAY 2"] if g in names]
-picked = st.multiselect("Games on the timeline (up to 5 is easiest to read)", names, default=defaults)
-tl = flags[flags["name"].isin(picked)]
-dots = alt.Chart(tl).mark_point(filled=True, size=120, opacity=0.95, stroke="white", strokeWidth=1.2).encode(
-    x=alt.X("activity_date:T", title=None, axis=alt.Axis(format="%b %Y"),
-            scale=alt.Scale(domain=[an["activity_date"].min(), an["activity_date"].max()])),
-    y=alt.Y("name:N", title=None, sort=picked),
-    shape=alt.Shape("kind:N", title=None, scale=alt.Scale(domain=KINDS, range=["triangle-up", "triangle-down", "circle"])),
-    fill=alt.Fill("kind:N", title=None, scale=alt.Scale(domain=KINDS, range=[UP, DOWN, MUTED])),
-    tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("activity_date:T", title="Day", format="%a %d %b %Y"),
-             alt.Tooltip("kind:N", title="What happened"),
-             alt.Tooltip("sale_discount_pct:Q", title="Sale discount % (if any)")])
-chart_block(
-    f"Unusual days are mostly good news: {n_s} sudden surges against {n_d} drops across all 21 games",
-    "Each row is a game, each mark an unusual day. Up-triangles are surges, down-triangles are drops. "
-    f"Grey circles are days when 3 or more games moved the same way at once ({n_w} such days). That points to "
-    "something Steam-wide (like an outage or a Steam event), not something about that one game.",
-    dots.properties(height=max(160, 44 * max(len(picked), 1))),
-    "Surges cluster around content updates, new seasons and sales. Drops are rarer and often come from "
-    "server downtime. When a drop hits many games at once, it's Steam itself, not the games.",
-)
+
+# ---- Chart 2: timeline of unusual days ---------------------------------------------------------
+# Fragment: changing the picked games redraws only this chart.
+@st.fragment
+def timeline_section():
+    n_s, n_d = int((flags["kind"] == "Unusual surge").sum()), int((flags["kind"] == "Unusual drop").sum())
+    n_w = int(flags.loc[flags["is_market_wide"], "activity_date"].nunique())
+    defaults = [g for g in ["Terraria", "Path of Exile", "No Man's Sky", "Counter-Strike 2", "PAYDAY 2"] if g in names]
+    picked = st.multiselect("Games on the timeline (up to 5 is easiest to read)", names, default=defaults)
+    tl = flags[flags["name"].isin(picked)]
+    kind_legend = legend_filter("kind")
+    dots = alt.Chart(tl).mark_point(filled=True, size=120, stroke="white", strokeWidth=1.2).encode(
+        x=alt.X("activity_date:T", title=None, axis=alt.Axis(format="%b %Y"),
+                scale=alt.Scale(domain=[an["activity_date"].min(), an["activity_date"].max()])),
+        y=alt.Y("name:N", title=None, sort=picked),
+        shape=alt.Shape("kind:N", title=None, scale=alt.Scale(domain=KINDS, range=["triangle-up", "triangle-down", "circle"])),
+        fill=alt.Fill("kind:N", title=None, scale=alt.Scale(domain=KINDS, range=[UP, DOWN, MUTED])),
+        tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("activity_date:T", title="Day", format="%a %d %b %Y"),
+                 alt.Tooltip("kind:N", title="What happened"),
+                 alt.Tooltip("sale_discount_pct:Q", title="Sale discount % (if any)")],
+        opacity=alt.when(kind_legend).then(alt.value(0.95)).otherwise(alt.value(0.1)),
+    ).add_params(kind_legend)
+    chart_block(
+        f"Unusual days are mostly good news: {n_s} sudden surges against {n_d} drops across all 21 games",
+        "Each row is a game, each mark an unusual day. Up-triangles are surges, down-triangles are drops. "
+        f"Grey circles are days when 3 or more games moved the same way at once ({n_w} such days). That points to "
+        "something Steam-wide (like an outage or a Steam event), not something about that one game. " + LEGEND_HINT,
+        dots.properties(height=max(160, 44 * max(len(picked), 1))),
+        "Surges cluster around content updates, new seasons and sales. Drops are rarer and often come from "
+        "server downtime. When a drop hits many games at once, it's Steam itself, not the games.",
+    )
+
+
+timeline_section()
 
 # ---- Chart 3: one game in detail (reuses the event-shading pattern) ----------------------------
-c1, c2 = st.columns([3, 1])
-with c1:
-    game = st.selectbox("Look at one game in detail", names, index=names.index("Terraria") if "Terraria" in names else 0)
-with c2:
-    year = st.segmented_control("Period", ["2018", "2019", "2020", "All"], default="2020", required=True,
-                                key="events_year")
-row = an[an["name"] == game].iloc[0]
-app_id = int(row.steam_app_id)
-daily = daily_activity(app_id)
-sales = query("select sale_start, sale_end, max_discount_pct from an_sale_effect where steam_app_id = ?", (app_id,))
-gflags = flags[flags["steam_app_id"] == app_id].copy()
-if year != "All":
-    daily = daily[daily["day"].dt.year == int(year)]
-    gflags = gflags[gflags["activity_date"].dt.year == int(year)]
-gflags["known"] = gflags["activity_date"].map(lambda d: known_event(app_id, d))
+# Fragment: picking a game or period redraws only this chart and its table.
+@st.fragment
+def game_detail_section():
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        game = st.selectbox("Look at one game in detail", names, index=names.index("Terraria") if "Terraria" in names else 0)
+    with c2:
+        year = st.segmented_control("Period", ["2018", "2019", "2020", "All"], default="2020", required=True,
+                                    key="events_year")
+    row = an[an["name"] == game].iloc[0]
+    app_id = int(row.steam_app_id)
+    daily = daily_activity(app_id)
+    sales = query("select sale_start, sale_end, max_discount_pct from an_sale_effect where steam_app_id = ?", (app_id,))
+    gflags = flags[flags["steam_app_id"] == app_id].copy()
+    if year != "All":
+        daily = daily[daily["day"].dt.year == int(year)]
+        gflags = gflags[gflags["activity_date"].dt.year == int(year)]
+    gflags["known"] = gflags["activity_date"].map(lambda d: known_event(app_id, d))
 
-left, right = st.columns([1, 4])
-with left:
-    game_image(row.header_image_url, width=220)
-    st.metric("Unusual days", f"{len(gflags)}")
-    st.metric("…of them during a sale", f"{int(gflags['during_sale'].sum())}")
-with right:
-    if daily.empty:
-        st.info("No daily player data for this game in the selected period.")
-    else:
-        # Headline = the flagged day that stands out most on the chart (furthest from 100%), so title and picture agree
-        shown = gflags.merge(daily[["day", "vs_typical"]], left_on="activity_date", right_on="day")
-        if shown.empty:
-            headline = f"{game} had no unusual days in this period"
+    left, right = st.columns([1, 4])
+    with left:
+        game_image(row.header_image_url, width=220)
+        st.metric("Unusual days", f"{len(gflags)}")
+        st.metric("…of them during a sale", f"{int(gflags['during_sale'].sum())}")
+    with right:
+        if daily.empty:
+            st.info("No daily player data for this game in the selected period.")
         else:
-            b = shown.loc[shown["vs_typical"].map(lambda v: abs(np.log(v))).idxmax()]
-            verb = "jumped to" if b.vs_typical >= 1 else "fell to"
-            headline = (f"{game}'s biggest moment: on {b.activity_date:%d %b %Y} players {verb} "
-                        f"{b.vs_typical:.1f}× the usual level" + (f" ({b.known})" if b.known else ""))
-        chart = event_chart(daily, sales, gflags)
-        notes = gflags[gflags["known"] != ""].drop_duplicates("known").merge(
-            daily, left_on="activity_date", right_on="day")
-        if not notes.empty:
-            chart = alt.layer(chart, alt.Chart(notes).mark_text(align="left", dx=10, dy=-4, fontSize=11, color=INK).encode(
-                x="day:T", y="vs_typical:Q", text="known:N"))
-        chart_block(
-            headline,
-            "The blue line is players online each day compared with the game's typical level (100%). "
-            "Triangles mark unusual days (up = surge, down = drop). Yellow bands are Steam sales.",
-            chart,
-            "Check each triangle for a yellow band (a sale) or a label (a known update). Surges with neither "
-            "usually match news, streamers or events we don't track.",
+            # Headline = the flagged day that stands out most on the chart (furthest from 100%), so title and picture agree
+            shown = gflags.merge(daily[["day", "vs_typical"]], left_on="activity_date", right_on="day")
+            if shown.empty:
+                headline = f"{game} had no unusual days in this period"
+            else:
+                b = shown.loc[shown["vs_typical"].map(lambda v: abs(np.log(v))).idxmax()]
+                verb = "jumped to" if b.vs_typical >= 1 else "fell to"
+                headline = (f"{game}'s biggest moment: on {b.activity_date:%d %b %Y} players {verb} "
+                            f"{b.vs_typical:.1f}× the usual level" + (f" ({b.known})" if b.known else ""))
+            chart = event_chart(daily, sales, gflags)
+            notes = gflags[gflags["known"] != ""].drop_duplicates("known").merge(
+                daily, left_on="activity_date", right_on="day")
+            if not notes.empty:
+                chart = alt.layer(chart, alt.Chart(notes).mark_text(align="left", dx=10, dy=-4, fontSize=11, color=INK).encode(
+                    x="day:T", y="vs_typical:Q", text="known:N"))
+            chart_block(
+                headline,
+                "The blue line is players online each day compared with the game's typical level (100%). "
+                "Triangles mark unusual days (up = surge, down = drop). Yellow bands are Steam sales.",
+                chart,
+                "Check each triangle for a yellow band (a sale) or a label (a known update). Surges with neither "
+                "usually match news, streamers or events we don't track.",
+            )
+
+    if not gflags.empty:
+        st.markdown("##### Unusual days for this game")
+        tbl = gflags.merge(daily[["day", "vs_typical"]], left_on="activity_date", right_on="day", how="left")
+        tbl["vs_typical"] = (tbl["vs_typical"] * 100).round()
+        tbl["sale"] = tbl["sale_discount_pct"].map(lambda d: f"{d:.0f}% off" if pd.notna(d) else "No sale")
+        st.dataframe(
+            tbl.sort_values("activity_date")[["activity_date", "kind", "vs_typical", "sale",
+                                              "games_flagged_same_day", "known"]],
+            hide_index=True,
+            column_config={
+                "activity_date": st.column_config.DateColumn("Day", format="ddd D MMM YYYY"),
+                "kind": "What happened",
+                "vs_typical": st.column_config.NumberColumn("vs. typical level", format="%d%%"),
+                "sale": "Steam sale that day",
+                "games_flagged_same_day": st.column_config.NumberColumn("Games moving the same way that day"),
+                "known": "What we know about this date",
+            },
         )
 
-if not gflags.empty:
-    st.markdown("##### Unusual days for this game")
-    tbl = gflags.merge(daily[["day", "vs_typical"]], left_on="activity_date", right_on="day", how="left")
-    tbl["vs_typical"] = (tbl["vs_typical"] * 100).round()
-    tbl["sale"] = tbl["sale_discount_pct"].map(lambda d: f"{d:.0f}% off" if pd.notna(d) else "No sale")
-    st.dataframe(
-        tbl.sort_values("activity_date")[["activity_date", "kind", "vs_typical", "sale",
-                                          "games_flagged_same_day", "known"]],
-        hide_index=True,
-        column_config={
-            "activity_date": st.column_config.DateColumn("Day", format="ddd D MMM YYYY"),
-            "kind": "What happened",
-            "vs_typical": st.column_config.NumberColumn("vs. typical level", format="%d%%"),
-            "sale": "Steam sale that day",
-            "games_flagged_same_day": st.column_config.NumberColumn("Games moving the same way that day"),
-            "known": "What we know about this date",
-        },
-    )
+
+game_detail_section()

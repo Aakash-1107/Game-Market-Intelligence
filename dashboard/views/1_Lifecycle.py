@@ -2,8 +2,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from common import (COUNT_AXIS, INK, INK_2, MUTED, PATTERN, PATTERN_ORDER, chart_block, coverage, page_header, pct,
-                    scale_for, spread_labels)
+from common import (COUNT_AXIS, HOVER_HINT, INK, INK_2, MUTED, PATTERN, PATTERN_ORDER, chart_block, coverage,
+                    highlight_lines, page_header, pct, scale_for, spread_labels)
 from db import query
 
 cov = coverage()
@@ -46,46 +46,52 @@ m3 = mc.loc[3]
 plateau = mc.loc[4:18].median()  # months 4-18: after the launch drop, before the 2-year mark
 
 # ---- Chart 1: the typical curve + a few picked games ------------------------------------------
-default = [g for g in ["ELDEN RING", "Baldur's Gate 3", "Subnautica", "Factorio", "Rust"] if g in set(settled["name"])]
-picked = st.multiselect("Compare games against the typical curve (up to 5 is easiest to read)",
-                        sorted(curves["name"].unique()), default=default)
-sel = curves[curves["name"].isin(picked)]
+# Fragment: changing the picker reruns and redraws only this section, not the whole page.
+@st.fragment
+def typical_curve_section():
+    default = [g for g in ["ELDEN RING", "Baldur's Gate 3", "Subnautica", "Factorio", "Rust"] if g in set(settled["name"])]
+    picked = st.multiselect("Compare games against the typical curve (up to 5 is easiest to read)",
+                            sorted(curves["name"].unique()), default=default)
+    sel = curves[curves["name"].isin(picked)]
 
-x = alt.X("month_idx:Q", title="Months since the game came out on Steam", scale=alt.Scale(domain=[0, 24]),
-          axis=alt.Axis(values=list(range(0, 25, 3))))
-y = alt.Y("vs_peak:Q", title="Players, as % of the launch peak", axis=alt.Axis(format="%"))
-ref = alt.Chart(pd.DataFrame({"y": [1.0]})).mark_rule(color=MUTED).encode(y="y:Q")
-typical = alt.Chart(median_curve).mark_line(color=INK, strokeWidth=3.5).encode(
-    x=x, y=y, tooltip=[alt.Tooltip("month_idx:Q", title="Month"),
-                       alt.Tooltip("vs_peak:Q", title="Typical game", format=".0%"),
-                       alt.Tooltip("games:Q", title="Games in this month")])
+    x = alt.X("month_idx:Q", title="Months since the game came out on Steam", scale=alt.Scale(domain=[0, 24]),
+              axis=alt.Axis(values=list(range(0, 25, 3))))
+    y = alt.Y("vs_peak:Q", title="Players, as % of the launch peak", axis=alt.Axis(format="%"))
+    ref = alt.Chart(pd.DataFrame({"y": [1.0]})).mark_rule(color=MUTED).encode(y="y:Q")
+    typical = alt.Chart(median_curve).mark_line(color=INK, strokeWidth=3.5).encode(
+        x=x, y=y, tooltip=[alt.Tooltip("month_idx:Q", title="Month"),
+                           alt.Tooltip("vs_peak:Q", title="Typical game", format=".0%"),
+                           alt.Tooltip("games:Q", title="Games in this month")])
 
-lines = alt.Chart(sel).mark_line(strokeWidth=2, opacity=0.9).encode(
-    x=x, y=y, detail="name:N",
-    color=alt.Color("pattern:N", title="Pattern after one year", scale=scale_for(PATTERN, PATTERN_ORDER)),
-    tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("month_idx:Q", title="Month"),
-             alt.Tooltip("vs_peak:Q", title="% of launch peak", format=".0%"),
-             alt.Tooltip("pattern:N", title="Pattern")])
-ends = sel.loc[sel.groupby("name")["month_idx"].idxmax(), ["name", "month_idx", "vs_peak"]]
-ends = pd.concat([ends, median_curve.loc[median_curve["month_idx"] == 24, ["month_idx", "vs_peak"]].assign(name="Typical game")])
-y_top = max(1.0, sel["vs_peak"].max() if not sel.empty else 1.0, median_curve["vs_peak"].max())
-ends = spread_labels(ends, "vs_peak", min_gap=y_top * 0.055)
-ends["weight"] = ends["name"].eq("Typical game").map({True: "bold", False: "normal"})
-end_labels = alt.Chart(ends).mark_text(align="left", dx=6, fontSize=11).encode(
-    x=x, y=alt.Y("label_y:Q"), text="name:N",
-    color=alt.condition("datum.name == 'Typical game'", alt.value(INK), alt.value(INK_2)))
+    lines = alt.Chart(sel).mark_line(strokeWidth=2).encode(
+        x=x, y=y, detail="name:N",
+        color=alt.Color("pattern:N", title="Pattern after one year", scale=scale_for(PATTERN, PATTERN_ORDER)),
+        tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("month_idx:Q", title="Month"),
+                 alt.Tooltip("vs_peak:Q", title="% of launch peak", format=".0%"),
+                 alt.Tooltip("pattern:N", title="Pattern")])
+    ends = sel.loc[sel.groupby("name")["month_idx"].idxmax(), ["name", "month_idx", "vs_peak"]]
+    ends = pd.concat([ends, median_curve.loc[median_curve["month_idx"] == 24, ["month_idx", "vs_peak"]].assign(name="Typical game")])
+    y_top = max(1.0, sel["vs_peak"].max() if not sel.empty else 1.0, median_curve["vs_peak"].max())
+    ends = spread_labels(ends, "vs_peak", min_gap=y_top * 0.055)
+    ends["weight"] = ends["name"].eq("Typical game").map({True: "bold", False: "normal"})
+    end_labels = alt.Chart(ends).mark_text(align="left", dx=6, fontSize=11).encode(
+        x=x, y=alt.Y("label_y:Q"), text="name:N",
+        color=alt.condition("datum.name == 'Typical game'", alt.value(INK), alt.value(INK_2)))
 
-chart_block(
-    f"A typical game is down to {pct(m3)} of its launch crowd after 3 months, "
-    f"then levels off at around {pct(plateau)}",
-    "The thick black line is the typical game (the middle value across "
-    f"{settled['name'].nunique()} games). The top grey line at 100% is each game's launch peak. "
-    "The thin lines are the games you picked, coloured by the pattern they end up in.",
-    (ref + lines + typical + end_labels).properties(height=420),
-    "The launch rush is short. Most players who show up in the first weeks are gone within a few months. "
-    "After that the curve flattens: the players who are left tend to stay. The small bumps at 12 and 24 months "
-    "line up with the game's anniversary, when many games run sales or release updates.",
-)
+    chart_block(
+        f"A typical game is down to {pct(m3)} of its launch crowd after 3 months, "
+        f"then levels off at around {pct(plateau)}",
+        "The thick black line is the typical game (the middle value across "
+        f"{settled['name'].nunique()} games). The top grey line at 100% is each game's launch peak. "
+        "The thin lines are the games you picked, coloured by the pattern they end up in. " + HOVER_HINT,
+        alt.layer(ref, *highlight_lines(lines, "pattern"), typical, end_labels).properties(height=420),
+        "The launch rush is short. Most players who show up in the first weeks are gone within a few months. "
+        "After that the curve flattens: the players who are left tend to stay. The small bumps at 12 and 24 months "
+        "line up with the game's anniversary, when many games run sales or release updates.",
+    )
+
+
+typical_curve_section()
 
 # ---- Chart 2: how many games end up in each pattern -------------------------------------------
 counts = (games.dropna(subset=["pattern"]).groupby("pattern").size()

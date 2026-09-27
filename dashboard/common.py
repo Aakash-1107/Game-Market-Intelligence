@@ -1,6 +1,8 @@
 """Shared look-and-feel for every page: category colours, plain-English labels,
 the glossary sidebar, the "how to read / what this means" chart frame, and the
 event-shading chart pattern (sale periods shaded behind a player-activity line)."""
+from pathlib import Path
+
 import altair as alt
 import pandas as pd
 import streamlit as st
@@ -83,22 +85,74 @@ which Steam sometimes records as the release date.
 """
 
 
-PROJECT_TITLE = "Game Market Intelligence & Player Activity"
+PROJECT_TITLE = "PC Game Market & Activity Intelligence"
 LOCAL_TZ = "Europe/Berlin"
+ASSETS = Path(__file__).resolve().parent / "assets"
+
+# Valve brand rules: the logo stands alone (no words attached to it) and is never the most prominent element,
+# so this attribution text is shown separately from the logo.
+STEAM_ATTRIBUTION = ("Live player counts, player reviews and game details come from the Steam Web API. "
+                     "Steam and the Steam logo are trademarks and/or registered trademarks of Valve Corporation "
+                     "in the U.S. and/or other countries. This project is not affiliated with or endorsed by Valve.")
 
 
-def page_header(title: str, intro: str, period: str | None = None, project_title: bool = False) -> None:
+def glossary_sidebar() -> None:
+    with st.sidebar.expander("Glossary: terms used here", expanded=False):
+        st.markdown(GLOSSARY)
+
+
+def page_header(title: str, intro: str, period: str | None = None) -> None:
     """period: one line saying which dates the page's data covers, shown right under the title."""
-    if project_title:
-        st.title(PROJECT_TITLE)
-        st.subheader(title)
-    else:
-        st.title(title)
+    st.title(title)
     if period:
         st.caption(f":material/calendar_month: **Data covered:** {period}")
     st.markdown(intro)
-    with st.sidebar.expander("Glossary: terms used here", expanded=False):
-        st.markdown(GLOSSARY)
+    glossary_sidebar()
+
+
+# Official artwork, black version = Valve's logo for light backgrounds. The app theme is locked to light in
+# .streamlit/config.toml, so no dark variant is needed. (Don't switch on st.context.theme.type: it follows the
+# viewer's OS dark-mode preference even when the app itself is locked to light.)
+STEAM_LOGO = ASSETS / "steam_logo_black.png"
+
+
+def _logo_tooltip_css() -> str:
+    """Hover text on the Steam logo, styled like Streamlit's own help tooltips (st.image has no `help`).
+    Colours match the fixed light theme in .streamlit/config.toml. The text only appears on hover,
+    so the logo itself still stands alone as Valve's brand rules require."""
+    text = STEAM_ATTRIBUTION.replace('"', '\\"')
+    return f"""<style>
+    /* margin-left:auto keeps the logo right-aligned even when the header wraps on a narrow window,
+       so the tooltip (anchored to the logo's right edge) always opens on-screen */
+    [data-testid="stLayoutWrapper"]:has(> .st-key-steam_logo) {{ margin-left: auto; }}
+    .st-key-steam_logo {{ position: relative; overflow: visible; }}
+    .st-key-steam_logo [data-testid="stElementToolbar"] {{ display: none; }}  /* no "fullscreen" button on a logo */
+    .st-key-steam_logo::after {{
+        content: "{text}";
+        position: absolute; top: calc(100% + 6px); right: 0; z-index: 1000;
+        width: min(340px, calc(100vw - 48px)); padding: 6px 12px; border-radius: 8px;
+        background: #f7f6f2; color: rgb(49, 51, 63); box-shadow: rgba(0, 0, 0, 0.16) 0 1px 4px;
+        font-size: 14px; line-height: 1.5; text-align: left; white-space: normal;
+        opacity: 0; visibility: hidden; pointer-events: none;
+        transition: opacity 0.15s ease 0.3s, visibility 0s linear 0.45s;
+    }}
+    .st-key-steam_logo:hover::after {{
+        opacity: 1; visibility: visible; transition: opacity 0.15s ease 0.3s, visibility 0s;
+    }}
+    </style>"""
+
+
+def project_header(subtitle: str) -> None:
+    """Home-page header: project title left, Steam logo right. The row wraps on narrow windows,
+    so the logo drops below the title instead of squeezing it."""
+    with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
+        st.title(PROJECT_TITLE, width="content")
+        if STEAM_LOGO.exists():
+            with st.container(key="steam_logo", width="content"):
+                st.image(str(STEAM_LOGO), width=170)
+            st.html(_logo_tooltip_css())
+    st.markdown(f":gray[{subtitle}]")
+    glossary_sidebar()
 
 
 def coverage() -> pd.Series:
@@ -125,6 +179,20 @@ def coverage() -> pd.Series:
             (select max(recorded_at) from fact_player_activity where data_resolution = 'hourly')  as live_last,
             (select gap_start from biggest)                                                       as live_gap_start,
             (select gap_end from biggest)                                                         as live_gap_end
+    """).iloc[0]
+
+
+def pipeline_counts() -> pd.Series:
+    """Headline pipeline-scale numbers (home page genre headline + 'How the data is built')."""
+    return query("""
+        select
+            (select count(*) from dim_game)                                          as games,
+            (select count(*) from dim_game where is_free)                            as free_games,
+            (select min(activity_month) from fact_player_activity_monthly)           as first_month,
+            (select count(*) from fact_player_activity)                              as readings,
+            (select count(*) from fact_price_snapshot)                               as price_changes,
+            (select count(distinct shop_id) from fact_price_snapshot)                as shops,
+            (select count(*) from fact_reviews)                                      as reviews
     """).iloc[0]
 
 
@@ -166,13 +234,17 @@ def live_snapshot() -> pd.DataFrame:
     """)
 
 
-def chart_block(title: str, how: str, chart, meaning: str) -> None:
-    """Every chart ships with a finding-title, a 'how to read' line and a 'what this means' line."""
+def chart_block(title: str, how: str, chart, meaning: str, how_label: str | None = "How to read this",
+                **chart_kwargs):
+    """Every chart ships with a finding-title, a 'how to read' line and a 'what this means' line.
+    how_label=None shows `how` as a plain one-line caption. chart_kwargs go to st.altair_chart
+    (key / on_select / selection_mode for clickable charts); its return value is passed back."""
     st.markdown(f"#### {title}")
-    st.caption(f"**How to read this:** {how}")
-    st.altair_chart(style(chart), width="stretch", theme=None)
+    st.caption(f"**{how_label}:** {how}" if how_label else how)
+    event = st.altair_chart(style(chart), width="stretch", theme=None, **chart_kwargs)
     st.markdown(f"**What this means:** {meaning}")
     st.write("")
+    return event
 
 
 def style(chart):
@@ -188,6 +260,36 @@ def style(chart):
 
 
 COUNT_AXIS = alt.Axis(format="d", tickMinStep=1)
+
+HOVER_HINT = "Hover a line to highlight that game; click a legend entry to show only that group (click again to reset)."
+LEGEND_HINT = "Click a legend entry to show only that group (click again to reset)."
+
+
+def legend_filter(field: str):
+    """Click a legend entry to fade everything else. Runs in the browser only (no rerun).
+    Bound to the legend, so clicks on the marks themselves are left free for other interactions."""
+    return alt.selection_point(fields=[field], bind="legend")
+
+
+def highlight_lines(lines: alt.Chart, legend_field: str) -> list[alt.Chart]:
+    """Multi-line chart interactions, all in the browser (no rerun): hovering a line thickens it and fades
+    the others; clicking a legend entry keeps only that group. `lines` must have a 'name' field per line.
+    A transparent, wider copy of each line sits on top so the thin lines are easy to hit with the mouse.
+    Tested in the browser (Altair 6.3 / Streamlit 1.64): the legend param must sit on the coloured layer, and the
+    hover copy must be a separate chart without colour. Deriving both layers from `lines` makes Vega fail with
+    "Duplicate signal name" (chart disappears); putting the legend param on the copy leaves the legend dead.
+    Returns two layers to spread into ONE flat alt.layer(...): nesting them inside another layer makes Altair
+    attach both params to both layers, which brings the "Duplicate signal name" error back."""
+    hover = alt.selection_point(fields=["name"], on="pointerover", clear="pointerout")
+    legend = legend_filter(legend_field)
+    visible = lines.encode(
+        opacity=alt.when(hover & legend).then(alt.value(0.95)).otherwise(alt.value(0.12)),
+        strokeWidth=alt.when(hover, empty=False).then(alt.value(3.5)).otherwise(alt.value(2)),
+    ).add_params(legend)
+    enc = lines.encoding
+    hit = alt.Chart(lines.data).mark_line(strokeWidth=12, strokeOpacity=0.001).encode(
+        x=enc.x, y=enc.y, detail="name:N", tooltip=enc.tooltip).add_params(hover)
+    return [visible, hit]
 
 
 def spread_labels(ends: pd.DataFrame, ycol: str, min_gap: float) -> pd.DataFrame:
@@ -244,7 +346,8 @@ def event_chart(daily: pd.DataFrame, sales: pd.DataFrame, anomalies: pd.DataFram
     smooth=True plots the 7-day average; keep it off when marking single days."""
     ycol = "vs_typical_7d" if smooth else "vs_typical"
     x_dom = [daily["day"].min(), daily["day"].max()]
-    x = alt.X("day:T", title=None, scale=alt.Scale(domain=x_dom), axis=alt.Axis(format="%b %Y"))
+    # tickCount="month": the default half-month ticks printed every month label twice ("Jan 2020, Jan 2020, ...")
+    x = alt.X("day:T", title=None, scale=alt.Scale(domain=x_dom), axis=alt.Axis(format="%b %Y", tickCount="month"))
 
     layers = []
     if not sales.empty:

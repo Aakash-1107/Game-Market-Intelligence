@@ -83,43 +83,49 @@ chart_block(
 )
 
 # ---- Chart 3: one game, sales shaded behind its players (event-shading pattern) ----------------
-games = (ep.groupby(["steam_app_id", "name", "header_image_url"]).size()
-         .reset_index(name="sales").sort_values("name"))
-names = games["name"].tolist()
-default = names.index("The Witcher 3: Wild Hunt - Complete Edition") if "The Witcher 3: Wild Hunt - Complete Edition" in names else 0
-c1, c2 = st.columns([3, 1])
-with c1:
-    game = st.selectbox("Look at one game", names, index=default)
-with c2:
-    year = st.segmented_control("Period", ["2018", "2019", "2020", "All"], default="2019", required=True)
-g = games[games["name"] == game].iloc[0]
+# Fragment: picking a game or period redraws only this section, not the whole page.
+@st.fragment
+def game_detail_section():
+    games = (ep.groupby(["steam_app_id", "name", "header_image_url"]).size()
+             .reset_index(name="sales").sort_values("name"))
+    names = games["name"].tolist()
+    default = names.index("The Witcher 3: Wild Hunt - Complete Edition") if "The Witcher 3: Wild Hunt - Complete Edition" in names else 0
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        game = st.selectbox("Look at one game", names, index=default)
+    with c2:
+        year = st.segmented_control("Period", ["2018", "2019", "2020", "All"], default="2019", required=True)
+    g = games[games["name"] == game].iloc[0]
 
-daily = daily_activity(int(g.steam_app_id))
-sales = query("""select sale_start, sale_end, max_discount_pct, lift_during, sale_outcome, episode_status
-                 from an_sale_effect where steam_app_id = ?""", (int(g.steam_app_id),))
-if year != "All":
-    daily = daily[daily["day"].dt.year == int(year)]
-gep = ep[ep["steam_app_id"] == g.steam_app_id]
-bumped = int((gep["lift_during"] >= 0.05).sum())
+    daily = daily_activity(int(g.steam_app_id))
+    sales = query("""select sale_start, sale_end, max_discount_pct, lift_during, sale_outcome, episode_status
+                     from an_sale_effect where steam_app_id = ?""", (int(g.steam_app_id),))
+    if year != "All":
+        daily = daily[daily["day"].dt.year == int(year)]
+    gep = ep[ep["steam_app_id"] == g.steam_app_id]
+    bumped = int((gep["lift_during"] >= 0.05).sum())
 
-left, right = st.columns([1, 4])
-with left:
-    game_image(g.header_image_url, width=220)
-    st.metric("Sales we could measure", f"{len(gep)}")
-    st.metric("Typical bump during a sale", pct(gep["lift_during"].median(), True))
-with right:
-    if daily.empty:
-        st.info("No daily player data for this game in the selected period.")
-    else:
-        chart_block(
-            f"{game}: players rose during {bumped} of its {len(gep)} measurable sales",
-            "The blue line is players online compared with the game's typical level around that time "
-            "(100% = typical), smoothed over 7 days to hide the weekday/weekend rhythm. Yellow bands are the days "
-            "the game was on sale on Steam. Hover a band for the discount.",
-            event_chart(daily, sales, smooth=True),
-            "If sales bring players, the line should jump up inside the yellow bands. "
-            "Watch whether it drops straight back to 100% after each band, or stays up for a while.",
-        )
+    left, right = st.columns([1, 4])
+    with left:
+        game_image(g.header_image_url, width=220)
+        st.metric("Sales we could measure", f"{len(gep)}")
+        st.metric("Typical bump during a sale", pct(gep["lift_during"].median(), True))
+    with right:
+        if daily.empty:
+            st.info("No daily player data for this game in the selected period.")
+        else:
+            chart_block(
+                f"{game}: players rose during {bumped} of its {len(gep)} measurable sales",
+                "The blue line is players online compared with the game's typical level around that time "
+                "(100% = typical), smoothed over 7 days to hide the weekday/weekend rhythm. Yellow bands are the days "
+                "the game was on sale on Steam. Hover a band for the discount.",
+                event_chart(daily, sales, smooth=True),
+                "If sales bring players, the line should jump up inside the yellow bands. "
+                "Watch whether it drops straight back to 100% after each band, or stays up for a while.",
+            )
+
+
+game_detail_section()
 
 with st.expander("Every measured sale (numbers behind these charts)"):
     t = ep.sort_values(["name", "sale_start"])[["name", "sale_start", "sale_days", "max_discount_pct",

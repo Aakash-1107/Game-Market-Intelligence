@@ -6,3 +6,7 @@ primaryColor = "#2a78d6"
 # Warm off-white instead of pure white to cut glare; gridlines (#e1e0d9) stay visible against it.
 backgroundColor = "#f7f6f2"
 secondaryBackgroundColor = "#ecebe4"
+
+[client]
+# Viewer-only menu for the demo: hides Deploy / Rerun / Clear cache. Restart the app to pick up new data.
+toolbarMode = "minimal"

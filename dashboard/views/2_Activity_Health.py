@@ -2,8 +2,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from common import (COUNT_AXIS, HEALTH, HEALTH_ORDER, INK_2, MUTED, chart_block, page_header, pct, scale_for,
-                    spread_labels)
+from common import (COUNT_AXIS, HEALTH, HEALTH_ORDER, HOVER_HINT, INK, INK_2, LEGEND_HINT, MUTED, chart_block,
+                    highlight_lines, legend_filter, page_header, pct, scale_for, spread_labels)
 from db import query
 
 bounds = query("select min(window_start) as window_start, max(window_end) as window_end from an_activity_health").iloc[0]
@@ -53,45 +53,14 @@ chart_block(
     "When they happen, they usually come from a major update or re-launch, not from a slow drift.",
 )
 
-# ---- Chart 2: same size, different direction ---------------------------------------------------
+# ---- Charts 2 + 3: scatter and trend lines, linked -----------------------------------------------
+# One fragment: clicking a dot in the scatter adds that game to the trend chart below, and changing the
+# picker redraws only these two charts, not the whole page.
 plot = judged.dropna(subset=["current_level_3m", "change_12m_pct"]).copy()
 CAP = 1.5
 plot["y"] = plot["change_12m_pct"].clip(upper=CAP)
 clipped = plot[plot["change_12m_pct"] > CAP]
 
-zero = alt.Chart(pd.DataFrame({"y": [0.0]})).mark_rule(color=MUTED).encode(y="y:Q")
-pts = alt.Chart(plot).mark_point(filled=True, size=120, opacity=0.9, stroke="white", strokeWidth=1.2).encode(
-    x=alt.X("current_level_3m:Q", title=f"Players online, {recent} average (log scale)",
-            scale=alt.Scale(type="log", domain=[1_500, 1_200_000]),
-            axis=alt.Axis(format="~s", values=[3_000, 10_000, 30_000, 100_000, 300_000, 1_000_000])),
-    y=alt.Y("y:Q", title="Change over the last 12 months", axis=alt.Axis(format="+%"),
-            scale=alt.Scale(domain=[-1, CAP])),
-    color=alt.Color("health:N", title=None, scale=scale_for(HEALTH, HEALTH_ORDER[:4])),
-    shape=alt.Shape("health:N", title=None, scale=alt.Scale(domain=HEALTH_ORDER[:4],
-                                                             range=["triangle-up", "circle", "diamond", "triangle-down"])),
-    tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("health:N", title="Health"),
-             alt.Tooltip("current_level_3m:Q", title=f"Players online, {recent} avg", format=",.0f"),
-             alt.Tooltip("change_12m_pct:Q", title="Change over 12 months", format="+.0%")])
-note = alt.Chart(clipped).mark_text(align="left", dx=8, dy=-2, fontSize=11, color=INK_2).encode(
-    x="current_level_3m:Q", y="y:Q",
-    text=alt.Text("label:N")).transform_calculate(
-    label="datum.name + ' (' + format(datum.change_12m_pct, '+.0%') + ', off the scale)'")
-
-big = plot.sort_values("current_level_3m", ascending=False)
-chart_block(
-    "Games of the same size can be heading in opposite directions",
-    f"Each dot is one game. Further right = more players in {recent} (each gridline is about 3× the one before). "
-    f"Higher up = gained players over {period} ({recent} compared with the first 3 months), below the grey line = lost players. "
-    "The colour (and shape) shows the health class, based on how steady the trend was — not just start vs. end.",
-    (zero + pts + note).properties(height=440),
-    "Size doesn't predict direction. Among games with a similar number of players, some are clearly "
-    "growing while others shrink or swing around. Player count alone is a poor guide to a game's health.",
-)
-
-# ---- Chart 3: trend lines for picked games -----------------------------------------------------
-defaults = [g for g in ["Apex Legends™", "No Man's Sky", "Stardew Valley", "ELDEN RING", "Counter-Strike 2"]
-            if g in set(judged["name"])]
-picked = st.multiselect("Pick games to compare (up to 5 is easiest to read)", sorted(judged["name"]), default=defaults)
 trend = query("""
     select h.name, h.health_class, m.activity_month, m.avg_players / h.start_level_3m as vs_start
     from an_activity_health h
@@ -100,12 +69,71 @@ trend = query("""
     where h.start_level_3m > 0
 """)
 trend["health"] = trend["health_class"].map(lambda c: HEALTH[c][0])
-tsel = trend[trend["name"].isin(picked)].copy()
-tsel["activity_month"] = pd.to_datetime(tsel["activity_month"])
 
-if tsel.empty:
-    st.info("Pick at least one game above to see its 12-month trend.")
-else:
+PICKED = "health_picked"  # session-state key of the game picker
+if PICKED not in st.session_state:
+    st.session_state[PICKED] = [g for g in ["Apex Legends™", "No Man's Sky", "Stardew Valley", "ELDEN RING",
+                                            "Counter-Strike 2"] if g in set(judged["name"])]
+
+
+def add_clicked_game() -> None:
+    """Scatter click (runs before the fragment reruns): add the clicked game to the picker."""
+    for point in st.session_state["health_scatter"].selection.get("pick", []):
+        name = point.get("name")
+        if name and name not in st.session_state[PICKED]:
+            st.session_state[PICKED] = st.session_state[PICKED] + [name]
+            st.toast(f"Added {name} to the comparison below", icon=":material/add_chart:")
+
+
+@st.fragment
+def compare_section():
+    picked = st.session_state[PICKED]
+    pick = alt.selection_point(name="pick", fields=["name"], on="click")
+    health_legend = legend_filter("health")
+    zero = alt.Chart(pd.DataFrame({"y": [0.0]})).mark_rule(color=MUTED).encode(y="y:Q")
+    pts = alt.Chart(plot.assign(compared=plot["name"].isin(picked))).mark_point(
+        filled=True, size=120).encode(
+        x=alt.X("current_level_3m:Q", title=f"Players online, {recent} average (log scale)",
+                scale=alt.Scale(type="log", domain=[1_500, 1_200_000]),
+                axis=alt.Axis(format="~s", values=[3_000, 10_000, 30_000, 100_000, 300_000, 1_000_000])),
+        y=alt.Y("y:Q", title="Change over the last 12 months", axis=alt.Axis(format="+%"),
+                scale=alt.Scale(domain=[-1, CAP])),
+        color=alt.Color("health:N", title=None, scale=scale_for(HEALTH, HEALTH_ORDER[:4])),
+        shape=alt.Shape("health:N", title=None, scale=alt.Scale(domain=HEALTH_ORDER[:4],
+                                                                 range=["triangle-up", "circle", "diamond", "triangle-down"])),
+        opacity=alt.when(health_legend).then(alt.value(0.9)).otherwise(alt.value(0.12)),
+        # dark ring = the game is already in the trend chart below
+        stroke=alt.when(alt.datum.compared).then(alt.value(INK)).otherwise(alt.value("white")),
+        strokeWidth=alt.when(alt.datum.compared).then(alt.value(2)).otherwise(alt.value(1.2)),
+        tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("health:N", title="Health"),
+                 alt.Tooltip("current_level_3m:Q", title=f"Players online, {recent} avg", format=",.0f"),
+                 alt.Tooltip("change_12m_pct:Q", title="Change over 12 months", format="+.0%")],
+    ).add_params(pick, health_legend)
+    note = alt.Chart(clipped).mark_text(align="left", dx=8, dy=-2, fontSize=11, color=INK_2).encode(
+        x="current_level_3m:Q", y="y:Q",
+        text=alt.Text("label:N")).transform_calculate(
+        label="datum.name + ' (' + format(datum.change_12m_pct, '+.0%') + ', off the scale)'")
+
+    chart_block(
+        "Games of the same size can be heading in opposite directions",
+        f"Each dot is one game. Further right = more players in {recent} (each gridline is about 3× the one before). "
+        f"Higher up = gained players over {period} ({recent} compared with the first 3 months), below the grey line = lost players. "
+        "The colour (and shape) shows the health class, based on how steady the trend was — not just start vs. end. "
+        "**Click a dot** to add that game to the trend chart below (dark ring = already there). " + LEGEND_HINT,
+        (zero + pts + note).properties(height=440),
+        "Size doesn't predict direction. Among games with a similar number of players, some are clearly "
+        "growing while others shrink or swing around. Player count alone is a poor guide to a game's health.",
+        key="health_scatter", on_select=add_clicked_game, selection_mode=["pick"],
+    )
+
+    # ---- Chart 3: trend lines for picked games -------------------------------------------------
+    picked = st.multiselect("Pick games to compare (up to 5 is easiest to read)", sorted(judged["name"]), key=PICKED)
+    tsel = trend[trend["name"].isin(picked)].copy()
+    tsel["activity_month"] = pd.to_datetime(tsel["activity_month"])
+
+    if tsel.empty:
+        st.info("Pick at least one game above, or click a dot in the chart above, to see its 12-month trend.")
+        return
     last = tsel.loc[tsel.groupby("name")["activity_month"].idxmax()]
     top, bottom = last.sort_values("vs_start").iloc[-1], last.sort_values("vs_start").iloc[0]
     x = alt.X("activity_month:T", title=None, axis=alt.Axis(format="%b %Y"))
@@ -126,11 +154,15 @@ else:
     chart_block(
         title,
         "Each line is one game. 100% (grey line) is its average over the first three months of the window. "
-        "A line above 100% means more players than at the start of the year. Colours match the health classes above.",
-        (base + lines + end_labels).properties(height=380),
+        "A line above 100% means more players than at the start of the year. Colours match the health classes above. "
+        + HOVER_HINT,
+        alt.layer(base, *highlight_lines(lines, "health"), end_labels).properties(height=380),
         "Putting every game on its own starting point shows the direction clearly, even for games whose "
         "player counts differ by a factor of a hundred.",
     )
+
+
+compare_section()
 
 with st.expander("All games: numbers behind these charts"):
     st.dataframe(
