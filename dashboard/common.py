@@ -122,9 +122,10 @@ def _logo_tooltip_css() -> str:
     so the logo itself still stands alone as Valve's brand rules require."""
     text = STEAM_ATTRIBUTION.replace('"', '\\"')
     return f"""<style>
-    /* margin-left:auto keeps the logo right-aligned even when the header wraps on a narrow window,
-       so the tooltip (anchored to the logo's right edge) always opens on-screen */
-    [data-testid="stLayoutWrapper"]:has(> .st-key-steam_logo) {{ margin-left: auto; }}
+    /* the logo is always the right-most item of the header row, so the tooltip opens leftwards on-screen.
+       The non-wrapping header row gets overflow:auto from Streamlit, which would clip the tooltip; the title
+       wraps instead of overflowing, so the row can safely show overflow. */
+    [data-testid="stHorizontalBlock"]:has(> [data-testid="stLayoutWrapper"] > .st-key-steam_logo) {{ overflow: visible; }}
     .st-key-steam_logo {{ position: relative; overflow: visible; }}
     .st-key-steam_logo [data-testid="stElementToolbar"] {{ display: none; }}  /* no "fullscreen" button on a logo */
     .st-key-steam_logo::after {{
@@ -143,10 +144,11 @@ def _logo_tooltip_css() -> str:
 
 
 def project_header(subtitle: str) -> None:
-    """Home-page header: project title left, Steam logo right. The row wraps on narrow windows,
-    so the logo drops below the title instead of squeezing it."""
-    with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
-        st.title(PROJECT_TITLE, width="content")
+    """Home-page header: project title left, Steam logo right, always on one row.
+    wrap=False + a stretching title: on narrower screens (e.g. laptops at 125-150 % scaling) the title
+    text breaks onto two lines instead of the logo dropping below the title."""
+    with st.container(horizontal=True, wrap=False, vertical_alignment="center", gap="medium"):
+        st.title(PROJECT_TITLE, width="stretch")
         if STEAM_LOGO.exists():
             with st.container(key="steam_logo", width="content"):
                 st.image(str(STEAM_LOGO), width=170)
