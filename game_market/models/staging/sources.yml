@@ -63,9 +63,15 @@ sources:
     description: "Raw ITAD price history JSON files from S3"
     tables:
       - name: price_history
-        description: "One file per game per ingestion run containing full price history across all shops"
+        description: >
+          One file per game per ingestion run containing full price history across all shops.
+          maximum_depth = 1 keeps `records` as raw JSON (not auto-typed): auto-detection turns the
+          offset-carrying timestamps ("2026-09-14T10:16:44+02:00") into zone-less TIMESTAMPs, which
+          invites double conversion. Staging extracts each field and casts the timestamp text to
+          TIMESTAMPTZ itself. (A `columns = {...}` argument can't be used here: dbt-duckdb formats
+          external_location with str.format_map, so curly braces break it.)
         meta:
-          external_location: "read_json('s3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json', format = 'auto')"
+          external_location: "read_json('s3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json', format = 'auto', maximum_depth = 1)"
 
   - name: opencritic_raw
     tables:

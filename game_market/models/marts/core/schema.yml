@@ -74,7 +74,15 @@ models:
 
 
   - name: fact_price_snapshot
-    description: "One row per price change event per game per shop. Grain: itad_game_id + shop_id + observed_at."
+    description: >
+      One row per price change event per game per shop. Grain: itad_game_id + shop_id + observed_at.
+      Scope: INNER JOIN to dim_game, so only tracked games (tracked_games seed) with Steam appdetails are kept;
+      ITAD history for other games (e.g. Dying Light, 239140: 1,246 rows) is excluded.
+      Dedup rule: when ITAD has several rows for the same itad_game_id + shop_id + observed_at with
+      different prices, one row is kept deterministically: rows that are not "price 0 and discount 0"
+      first, then the highest discount_pct, then the lowest price_amount.
+      observed_at is the exact instant from ITAD's offset-carrying timestamp (stored as TIMESTAMPTZ, UTC-safe).
+      Currency varies by shop (EUR for Steam; some UK/US shops report GBP/USD), so compare prices within a shop only.
     columns:
       - name: snapshot_id
         description: "Surrogate key: md5(itad_game_id | shop_id | observed_at)"
