@@ -1,6 +1,9 @@
 """
 Fetches Steam reviews for all tracked games and writes raw JSON to S3.
-Collects up to 1,000 reviews per game (10 pages x 100) in English.
+Collects the newest 1,000 reviews per game (10 pages x 100) in English.
+filter=recent (sorted by creation time) is required for stable cursor pagination; the default
+filter=all sorts by helpfulness, returns a different sample every call and repeats reviews across
+pages. Fetches before 2026-09-28 used the default.
 Logs each game to ingestion_log on Neon.
 
 Run from project root:
@@ -70,6 +73,7 @@ def fetch_reviews_for_game(app_id: int) -> tuple[list[dict], dict]:
     while len(all_reviews) < MAX_REVIEWS_PER_GAME:
         params = {
             "json": 1,
+            "filter": "recent",
             "language": "english",
             "review_type": "all",
             "purchase_type": "all",
