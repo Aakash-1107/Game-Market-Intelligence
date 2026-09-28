@@ -56,7 +56,7 @@ st.markdown("""
 2. **Store the raw files.** Every response is saved unchanged (Parquet, JSON or CSV) in cloud storage (AWS S3),
    sorted by source and date. Nothing is edited at this stage, so every later step can be rebuilt from scratch.
 3. **Clean and combine (dbt).** dbt loads the raw files into a DuckDB database in three layers: *staging* cleans
-   each source, *intermediate* builds daily player counts and sale periods, and *marts* hold the final tables,
+   each source, *intermediate* builds daily player counts and discount periods, and *marts* hold the final tables,
    including one table per question this dashboard answers.
 4. **Show.** This dashboard reads those final tables. It never changes them.
 """)
@@ -69,7 +69,7 @@ st.table(
         ("Monthly player averages", "fact_player_activity_monthly", c.monthly_rows),
         ("Price changes", "fact_price_snapshot", k.price_changes),
         ("Player reviews", "fact_reviews", k.reviews),
-        ("Sale periods measured (page: Do sales bring players?)", "an_sale_effect", c.sale_periods),
+        ("Discount periods measured (page: Do discounts bring players?)", "an_sale_effect", c.sale_periods),
         ("Game-days checked for unusual activity (page: Unusual days)", "an_market_anomalies", c.days_checked),
     ], columns=["What", "Table", "Rows"]).assign(Rows=lambda d: d["Rows"].map(lambda n: f"{n:,}")),
     hide_index=True,
@@ -95,7 +95,7 @@ st.markdown(
     gap
     + f"- **Day-by-day history is old and partial:** the 5-minute data covers only {c.fine_games} games, "
       f"{local(cov.fine_first):%b %Y} – {local(cov.fine_last):%b %Y}. After that, history exists only as monthly "
-      "averages, which are too coarse to see a single sale or an unusual day. That's why *Do sales bring players?* "
+      "averages, which are too coarse to see a single discount or an unusual day. That's why *Do discounts bring players?* "
       "and *Unusual days* use this period.\n"
     + f"- **Monthly history:** {c.monthly_games} of {k.games} games"
     + (f"; missing: {missing.no_monthly} (released too recently for a complete month).\n" if missing.no_monthly else ".\n")

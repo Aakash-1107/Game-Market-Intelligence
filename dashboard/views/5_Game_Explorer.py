@@ -109,7 +109,7 @@ else:
         "The line shows how many people were playing at the same moment, averaged over each month. "
         "The black dot marks the busiest month; the thin grey vertical line is when the game came out on Steam.",
         alt.layer(*layers).properties(height=300),
-        "Peaks usually line up with the launch, a big update, a sale or a new season. The long flat stretches "
+        "Peaks usually line up with the launch, a big update, a discount or a new season. The long flat stretches "
         "are the game's loyal core audience.",
     )
 
@@ -167,12 +167,12 @@ else:
                  alt.Tooltip("discount_pct:Q", title="Discount %")])
     free_note = " It is free-to-play today." if g.is_free else ""
     chart_block(
-        f"{game} has gone on sale {starts} times on Steam since {price.observed_at.min():%Y}; "
+        f"{game} has been discounted {starts} times on Steam since {price.observed_at.min():%Y}; "
         f"the deepest discount was {deepest}% off",
         "The line is what the game cost on Steam over time. The flat top is its normal price; "
-        "each dip down is a sale (deeper dip = bigger discount).",
+        "each dip down is a discount (deeper dip = bigger discount).",
         step.properties(height=260),
-        "Sales are regular and predictable for most paid games: big Steam seasonal sales come round several times "
+        "Discounts are regular and predictable for most paid games: big Steam seasonal discount events come round several times "
         "a year, so many buyers wait for them." + free_note,
     )
 

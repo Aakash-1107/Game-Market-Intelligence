@@ -12,7 +12,7 @@ page_header(
     "Unusual days: sudden rushes and collapses",
     "Some days, a game's player count jumps or falls far outside its normal range. This page finds those "
     "**unusual days** automatically. It compares each day with the game's previous four weeks and asks: "
-    "was there a sale on? Did many games move at once (a Steam-wide cause)? "
+    "was there a discount on? Did many games move at once (a Steam-wide cause)? "
     "Covers the 21 games with 5-minute player data.",
     period=f"5-minute player data, {local(cov.fine_first):%d %b %Y} – {local(cov.fine_last):%d %b %Y} "
            "(a historical backfill; unusual days need day-by-day data, which the monthly history doesn't have).",
@@ -52,12 +52,12 @@ KINDS = ["Unusual surge", "Unusual drop", STEAM_WIDE]
 # Only games that were ever on sale, so free-to-play games don't pad the "no sale" group.
 paid = an[an["steam_app_id"].isin(an.loc[an["during_sale"], "steam_app_id"].unique()) & (an["anomaly_status"] == "scored")].copy()
 paid["bucket"] = pd.cut(paid["sale_discount_pct"].fillna(-1), [-2, 0, 49, 100],
-                        labels=["No sale", "Sale, under 50% off", "Sale, 50% off or more"])
+                        labels=["No discount", "Discount, under 50% off", "Discount, 50% off or more"])
 paid["surge"] = paid["is_anomaly"] & (paid["direction"] == "spike") & ~paid["is_market_wide"]
 rates = paid.groupby("bucket", observed=True).agg(days=("surge", "size"), surges=("surge", "sum")).reset_index()
 rates["rate"] = rates["surges"] / rates["days"]
 r = rates.set_index("bucket")["rate"]
-ratio = r["Sale, 50% off or more"] / r["No sale"]
+ratio = r["Discount, 50% off or more"] / r["No discount"]
 
 bars = alt.Chart(rates).mark_bar(cornerRadiusEnd=4, height=26, color=INK_2).encode(
     y=alt.Y("bucket:N", sort=list(rates["bucket"]), title=None),
@@ -66,13 +66,13 @@ bars = alt.Chart(rates).mark_bar(cornerRadiusEnd=4, height=26, color=INK_2).enco
              alt.Tooltip("surges:Q", title="Unusual surges"), alt.Tooltip("rate:Q", title="Share", format=".1%")])
 labels = bars.mark_text(align="left", dx=4, color=INK_2).encode(text=alt.Text("rate:Q", format=".1%"))
 chart_block(
-    f"A sudden rush of players is about {ratio:.0f}× more likely on a day with a big sale than on a normal day",
+    f"A sudden rush of players is about {ratio:.0f}× more likely on a day with a big discount than on a normal day",
     "Each bar is the share of days on which a game had an unusual surge in players. Days are grouped by whether "
-    "the game was on sale on Steam that day, and how deep the discount was. "
-    f"Only the {paid['steam_app_id'].nunique()} games that go on sale are counted.",
+    "the game was discounted on Steam that day, and how deep the discount was. "
+    f"Only the {paid['steam_app_id'].nunique()} games that get discounted are counted.",
     (bars + labels).properties(height=190),
-    "Big discounts and sudden player rushes go together. Note that a sale doesn't guarantee a rush, though: "
-    "even on 50%+ sale days, most days are ordinary. Publishers also often time sales to match big updates, "
+    "Big discounts and sudden player rushes go together. Note that a discount doesn't guarantee a rush, though: "
+    "even on 50%+ discount days, most days are ordinary. Publishers also often time discounts to match big updates, "
     "so part of the effect is the update, not the price.",
 )
 
@@ -96,7 +96,7 @@ def timeline_section():
         fill=alt.Fill("kind:N", title=None, scale=alt.Scale(domain=KINDS, range=[UP, DOWN, MUTED])),
         tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("activity_date:T", title="Day", format="%a %d %b %Y"),
                  alt.Tooltip("kind:N", title="What happened"),
-                 alt.Tooltip("sale_discount_pct:Q", title="Sale discount % (if any)")],
+                 alt.Tooltip("sale_discount_pct:Q", title="Discount % (if any)")],
         opacity=alt.when(kind_legend).then(alt.value(0.95)).otherwise(alt.value(0.1)),
     ).add_params(kind_legend)
     chart_block(
@@ -105,7 +105,7 @@ def timeline_section():
         f"Grey circles are days when 3 or more games moved the same way at once ({n_w} such days). That points to "
         "something Steam-wide (like an outage or a Steam event), not something about that one game. " + LEGEND_HINT,
         dots.properties(height=max(160, 44 * max(len(picked), 1))),
-        "Surges cluster around content updates, new seasons and sales. Drops are rarer and often come from "
+        "Surges cluster around content updates, new seasons and discounts. Drops are rarer and often come from "
         "server downtime. When a drop hits many games at once, it's Steam itself, not the games.",
     )
 
@@ -136,7 +136,7 @@ def game_detail_section():
     with left:
         game_image(row.header_image_url, width=220)
         st.metric("Unusual days", f"{len(gflags)}")
-        st.metric("…of them during a sale", f"{int(gflags['during_sale'].sum())}")
+        st.metric("…of them during a discount", f"{int(gflags['during_sale'].sum())}")
     with right:
         if daily.empty:
             st.info("No daily player data for this game in the selected period.")
@@ -159,9 +159,9 @@ def game_detail_section():
             chart_block(
                 headline,
                 "The blue line is players online each day compared with the game's typical level (100%). "
-                "Triangles mark unusual days (up = surge, down = drop). Yellow bands are Steam sales.",
+                "Triangles mark unusual days (up = surge, down = drop). Yellow bands are Steam discounts.",
                 chart,
-                "Check each triangle for a yellow band (a sale) or a label (a known update). Surges with neither "
+                "Check each triangle for a yellow band (a discount) or a label (a known update). Surges with neither "
                 "usually match news, streamers or events we don't track.",
             )
 
@@ -169,7 +169,7 @@ def game_detail_section():
         st.markdown("##### Unusual days for this game")
         tbl = gflags.merge(daily[["day", "vs_typical"]], left_on="activity_date", right_on="day", how="left")
         tbl["vs_typical"] = (tbl["vs_typical"] * 100).round()
-        tbl["sale"] = tbl["sale_discount_pct"].map(lambda d: f"{d:.0f}% off" if pd.notna(d) else "No sale")
+        tbl["sale"] = tbl["sale_discount_pct"].map(lambda d: f"{d:.0f}% off" if pd.notna(d) else "No discount")
         st.dataframe(
             tbl.sort_values("activity_date")[["activity_date", "kind", "vs_typical", "sale",
                                               "games_flagged_same_day", "known"]],
@@ -178,7 +178,7 @@ def game_detail_section():
                 "activity_date": st.column_config.DateColumn("Day", format="ddd D MMM YYYY"),
                 "kind": "What happened",
                 "vs_typical": st.column_config.NumberColumn("vs. typical level", format="%d%%"),
-                "sale": "Steam sale that day",
+                "sale": "Steam discount that day",
                 "games_flagged_same_day": st.column_config.NumberColumn("Games moving the same way that day"),
                 "known": "What we know about this date",
             },

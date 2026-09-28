@@ -120,6 +120,7 @@ models:
         data_tests:
           - not_null
       - name: is_on_sale
+        description: "\"Sale\" = Steam discount period (price promotion), not units sold. True when this price snapshot is discounted."
         data_tests:
           - not_null
           - accepted_values:

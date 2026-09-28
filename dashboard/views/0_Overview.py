@@ -115,8 +115,8 @@ st.markdown("#### Where to go next")
 guide = [
     ("views/1_Lifecycle.py", "Life after launch", "How many players does a game keep after its launch rush?"),
     ("views/2_Activity_Health.py", "Activity health", "Which games are growing, holding steady, or shrinking right now?"),
-    ("views/3_Sale_Effect.py", "Do sales bring players?", "When a game goes on sale, do the extra players stay?"),
-    ("views/4_Market_Events.py", "Unusual days", "Which days saw a sudden rush or collapse, and was a sale involved?"),
+    ("views/3_Sale_Effect.py", "Do discounts bring players?", "When a game is discounted, do the extra players stay?"),
+    ("views/4_Market_Events.py", "Unusual days", "Which days saw a sudden rush or collapse, and was a discount involved?"),
     ("views/5_Game_Explorer.py", "Game explorer", "Everything we know about one game: players, prices, reviews."),
     ("views/6_Data.py", "How the data is built", "Where the numbers come from, how fresh they are, and what's missing."),
 ]

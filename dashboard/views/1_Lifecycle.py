@@ -52,6 +52,7 @@ def typical_curve_section():
     default = [g for g in ["ELDEN RING", "Baldur's Gate 3", "Subnautica", "Factorio", "Rust"] if g in set(settled["name"])]
     picked = st.multiselect("Compare games against the typical curve (up to 5 is easiest to read)",
                             sorted(curves["name"].unique()), default=default)
+    show_typical = st.checkbox("Show typical game", value=True)
     sel = curves[curves["name"].isin(picked)]
 
     x = alt.X("month_idx:Q", title="Months since the game came out on Steam", scale=alt.Scale(domain=[0, 24]),
@@ -70,7 +71,8 @@ def typical_curve_section():
                  alt.Tooltip("vs_peak:Q", title="% of launch peak", format=".0%"),
                  alt.Tooltip("pattern:N", title="Pattern")])
     ends = sel.loc[sel.groupby("name")["month_idx"].idxmax(), ["name", "month_idx", "vs_peak"]]
-    ends = pd.concat([ends, median_curve.loc[median_curve["month_idx"] == 24, ["month_idx", "vs_peak"]].assign(name="Typical game")])
+    if show_typical:
+        ends = pd.concat([ends, median_curve.loc[median_curve["month_idx"] == 24, ["month_idx", "vs_peak"]].assign(name="Typical game")])
     y_top = max(1.0, sel["vs_peak"].max() if not sel.empty else 1.0, median_curve["vs_peak"].max())
     ends = spread_labels(ends, "vs_peak", min_gap=y_top * 0.055)
     ends["weight"] = ends["name"].eq("Typical game").map({True: "bold", False: "normal"})
@@ -84,11 +86,14 @@ def typical_curve_section():
         "The thick black line is the typical game (the middle value across "
         f"{settled['name'].nunique()} games). The top grey line at 100% is each game's launch peak. "
         "The thin lines are the games you picked, coloured by the pattern they end up in. " + HOVER_HINT,
-        alt.layer(ref, *highlight_lines(lines, "pattern"), typical, end_labels).properties(height=420),
+        alt.layer(ref, *highlight_lines(lines, "pattern"), *([typical] if show_typical else []), end_labels)
+        .properties(height=420),
         "The launch rush is short. Most players who show up in the first weeks are gone within a few months. "
         "After that the curve flattens: the players who are left tend to stay. The small bumps at 12 and 24 months "
-        "line up with the game's anniversary, when many games run sales or release updates.",
+        "line up with the game's anniversary, when many games run discounts or release updates.",
     )
+    st.caption(f"Typical game = median of the {settled['name'].nunique()} games that have at least a year of "
+               "history since launch, including re-releases and games that went free-to-play later.")
 
 
 typical_curve_section()
