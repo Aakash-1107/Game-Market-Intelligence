@@ -26,14 +26,6 @@ models:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns: [steam_app_id, activity_date]
 
-  - name: int_game_first_observed
-    description: One row per tracked game with its first observed activity date.
-    columns:
-      - name: steam_app_id
-        tests:
-          - unique
-          - not_null
-
   - name: int_sale_episodes
     description: "\"Sale\" here means a Steam discount period (price promotion), not units sold. One row per Steam sale episode per game (consecutive is_on_sale days)."
     columns:
