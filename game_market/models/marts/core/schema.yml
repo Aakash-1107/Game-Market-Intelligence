@@ -72,6 +72,18 @@ models:
           - accepted_values:
               values: ['hourly', '5min', 'monthly']
 
+  - name: fact_reviews
+    description: >
+      One row per Steam user review for a tracked game. Grain: steam_app_id + recommendation_id.
+      Accumulates every review ever fetched, latest version per review (not one consistent snapshot).
+      Reviews fetched before 2026-09-28 are a helpfulness-ordered sample (Steam's default filter=all);
+      fetches from 2026-09-28 on are the newest 1,000 per game (filter=recent).
+    columns:
+      - name: review_key
+        description: "MD5 surrogate key generated from steam_app_id and recommendation_id"
+        data_tests:
+          - not_null
+          - unique
 
   - name: fact_price_snapshot
     description: >

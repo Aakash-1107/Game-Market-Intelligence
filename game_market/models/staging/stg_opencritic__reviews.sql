@@ -35,9 +35,20 @@ extracted as (
         review->'Platforms'->0->>'name'                     as platform_name
 
     from raw
+),
+
+-- Grain: one row per review_id, latest fetch wins (raw is one file per game per run).
+-- Dedup before the filters so a review is judged on its latest version.
+latest as (
+    select *
+    from extracted
+    qualify row_number() over (
+        partition by review_id
+        order by fetched_at_utc desc
+    ) = 1
 )
 
 select *
-from extracted
+from latest
 where language = 'en-us'   -- English reviews only
   and np_score is not null  -- drop reviews with no usable score
