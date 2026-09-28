@@ -2,7 +2,7 @@
 with source as (
 
     select *
-    from read_csv_auto('s3://game-market-raw/raw/steam/app_list/steam_app_list.csv')
+    from read_csv_auto('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/app_list/steam_app_list.csv')
 
 ),
 

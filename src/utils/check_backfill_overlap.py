@@ -6,15 +6,21 @@ Run from the project root:
     python src/utils/check_backfill_overlap.py
 """
 
+import os
 import sys
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
 
+load_dotenv()
+
 # --- Configuration ---
-PART1_DIR = Path(r"C:\Users\isabe\Downloads\PLayerCountData\PlayerCountHistoryPart1\PlayerCountHistoryPart1")
-PART2_DIR = Path(r"C:\Users\isabe\Downloads\PLayerCountData\PlayerCountHistoryPart2\PlayerCountHistoryPart2")
+# Local folders of the unpacked PlayerCountHistory dataset (see .env.example)
+PART1_DIR = Path(os.environ["PLAYER_COUNT_HISTORY_PART1_DIR"])
+PART2_DIR = Path(os.environ["PLAYER_COUNT_HISTORY_PART2_DIR"])
 
 
 def get_app_ids_from_directory(directory: Path) -> dict[int, Path]:

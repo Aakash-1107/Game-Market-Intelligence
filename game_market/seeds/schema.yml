@@ -2,29 +2,36 @@ version: 2
 
 seeds:
   - name: tracked_games
-    description: "Human-curated. Authoritative list of tracked games: drives the Python ingestion scripts and filters dim_game (and through it every fact)."
+    description: >
+      Human-curated. Authoritative list of tracked games. Adding one row is the only step needed to track a new game.
+      Active rows drive every ingestion script. All rows (active and inactive) drive dim_game, so
+      is_active=false stops ingestion without losing history. game_name is a human-readable label only;
+      the pipeline never depends on it.
     config:
       column_types:
         steam_app_id: varchar
         game_name: varchar
+        is_active: boolean
     columns:
       - name: steam_app_id
         tests:
           - unique
           - not_null
       - name: game_name
+        description: "Label only, not used by the pipeline"
         tests:
           - not_null
+      - name: is_active
+        description: "true = ingest; false = stop ingesting but keep the game and its history in the marts"
+        data_tests:
+          - not_null
 
-  - name: source_id_mappings
+  - name: manual_id_overrides
     description: >
-      Reference/audit artifact only — not read by any dbt model or Python script.
-      Snapshot of the Steam App ID → ITAD / OpenCritic ID resolution done at project setup.
-      The live mapping used by ingestion is the Neon table game_source_mapping
-      (read by src/ingestion/itad_price_history.py and opencritic_reviews.py).
-      dbt does not need it: the raw ITAD and OpenCritic files already carry steam_app_id
-      in their contents. Known stale: incomplete ITAD/OpenCritic coverage, still lists
-      Dying Light (239140), which was dropped from tracked_games on 2026-09-25.
+      Human-curated. Source-ID decisions that override automatic resolution: matched_manual (human match) and matched_imported
+      (setup-time auto-match imported from Neon on 2026-09-28) give the ID,
+      no_coverage means the source has no entry. Read by resolve_ids.py (ITAD), opencritic_reviews.py
+      (OpenCritic, the only way a game gets OpenCritic data) and stg_source_id_mapping.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -34,31 +41,35 @@ seeds:
         steam_app_id: varchar
         source: varchar
         source_game_id: varchar
-        resolution_type: varchar
-        notes: varchar
+        status: varchar
+        note: varchar
     columns:
       - name: steam_app_id
-        tests:
+        data_tests:
           - not_null
           - relationships:
               arguments:
                 to: ref('tracked_games')
                 field: steam_app_id
               config:
-                severity: warn   # 239140 Dying Light is a known stale row
+                severity: warn
+      - name: source
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['itad', 'opencritic']
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['matched_manual', 'matched_imported', 'no_coverage']
       - name: source_game_id
         data_tests:
           - not_null:
               config:
-                where: "resolution_type <> 'no_coverage'"
-      - name: source
-        tests:
-          - not_null
-      - name: resolution_type
-        tests:
-          - not_null
-          - accepted_values:
-              values: ['auto', 'manual', 'no_coverage']
+                where: "status in ('matched_manual', 'matched_imported')"
 
   - name: seed_steam_release_context
     description: "Human-curated. Games whose Steam release is not their original launch. Games not listed are treated as original_launch."

@@ -1,55 +1,55 @@
-steam_app_id,game_name
-570,Dota 2
-730,Counter-Strike 2
-39210,FINAL FANTASY XIV Online
-105600,Terraria
-218620,PAYDAY 2
-221100,DayZ
-227300,Euro Truck Simulator 2
-230410,Warframe
-236390,War Thunder
-238960,Path of Exile
-251570,7 Days to Die
-252490,Rust
-255710,Cities: Skylines
-264710,Subnautica
-275850,No Man's Sky
-281990,Stellaris
-292030,The Witcher 3: Wild Hunt - Complete Edition
-294100,RimWorld
-359550,Tom Clancy's Rainbow Six Siege
-374320,DARK SOULS III
-377160,Fallout 4
-394360,Hearts of Iron IV
-413150,Stardew Valley
-427520,Factorio
-435150,Divinity: Original Sin 2 - Definitive Edition
-489830,The Elder Scrolls V: Skyrim Special Edition
-553850,HELLDIVERS 2
-578080,PUBG: BATTLEGROUNDS
-588650,Dead Cells
-646570,Slay the Spire
-892970,Valheim
-1086940,Baldur's Gate 3
-1091500,Cyberpunk 2077
-1172470,Apex Legends
-1174180,Red Dead Redemption 2
-1222670,The Sims 4
-1245620,ELDEN RING
-1364780,Street Fighter 6
-1623730,Palworld
-2246340,Monster Hunter Wilds
-2357570,Overwatch
-2483190,Forza Horizon 6
-2638890,Onimusha: Way of the Sword
-2694490,Path of Exile 2
-2767030,Marvel Rivals
-2807960,Battlefield 6
-3240220,Grand Theft Auto V Enhanced
-3321460,Crimson Desert Enhanced
-3405690,EA SPORTS FC 26
-3419430,Bongo Cat
-3678970,TBH: Task Bar Hero
-3751260,The Blood of Dawnwalker
-3932890,Escape from Tarkov
-4001890,How to Fish
+steam_app_id,game_name,is_active
+570,Dota 2,true
+730,Counter-Strike 2,true
+39210,FINAL FANTASY XIV Online,true
+105600,Terraria,true
+218620,PAYDAY 2,true
+221100,DayZ,true
+227300,Euro Truck Simulator 2,true
+230410,Warframe,true
+236390,War Thunder,true
+238960,Path of Exile,true
+251570,7 Days to Die,true
+252490,Rust,true
+255710,Cities: Skylines,true
+264710,Subnautica,true
+275850,No Man's Sky,true
+281990,Stellaris,true
+292030,The Witcher 3: Wild Hunt - Complete Edition,true
+294100,RimWorld,true
+359550,Tom Clancy's Rainbow Six Siege,true
+374320,DARK SOULS III,true
+377160,Fallout 4,true
+394360,Hearts of Iron IV,true
+413150,Stardew Valley,true
+427520,Factorio,true
+435150,Divinity: Original Sin 2 - Definitive Edition,true
+489830,The Elder Scrolls V: Skyrim Special Edition,true
+553850,HELLDIVERS 2,true
+578080,PUBG: BATTLEGROUNDS,true
+588650,Dead Cells,true
+646570,Slay the Spire,true
+892970,Valheim,true
+1086940,Baldur's Gate 3,true
+1091500,Cyberpunk 2077,true
+1172470,Apex Legends,true
+1174180,Red Dead Redemption 2,true
+1222670,The Sims 4,true
+1245620,ELDEN RING,true
+1364780,Street Fighter 6,true
+1623730,Palworld,true
+2246340,Monster Hunter Wilds,true
+2357570,Overwatch,true
+2483190,Forza Horizon 6,true
+2638890,Onimusha: Way of the Sword,true
+2694490,Path of Exile 2,true
+2767030,Marvel Rivals,true
+2807960,Battlefield 6,true
+3240220,Grand Theft Auto V Enhanced,true
+3321460,Crimson Desert Enhanced,true
+3405690,EA SPORTS FC 26,true
+3419430,Bongo Cat,true
+3678970,TBH: Task Bar Hero,true
+3751260,The Blood of Dawnwalker,true
+3932890,Escape from Tarkov,true
+4001890,How to Fish,true

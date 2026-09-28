@@ -1,0 +1,16 @@
+steam_app_id,source,source_game_id,status,note
+264710,opencritic,5437,matched_manual,Subnautica: manual match
+252490,opencritic,5452,matched_manual,Rust: manual match
+238960,opencritic,,no_coverage,Path of Exile: pre-2015 title not in OpenCritic
+227300,opencritic,,no_coverage,Euro Truck Simulator 2: pre-2015 title not in OpenCritic
+218620,opencritic,,no_coverage,PAYDAY 2: pre-2015 title not in OpenCritic
+570,opencritic,9753,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+730,opencritic,15609,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+39210,opencritic,271,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+105600,opencritic,148,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+221100,opencritic,1736,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+230410,opencritic,319,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+236390,opencritic,249,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+251570,opencritic,2809,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+292030,opencritic,8396,matched_imported,"auto-matched 2026-09-21, imported from Neon"
+413150,opencritic,2242,matched_imported,"auto-matched 2026-09-21, imported from Neon"

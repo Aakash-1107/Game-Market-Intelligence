@@ -1,3 +1,9 @@
+"""OBSOLETE since 2026-09-28: superseded by src/ingestion/resolve_ids.py. Kept for reference.
+
+One-off setup script that resolved ITAD UUIDs and upserted them into the Neon table game_source_mapping
+(also obsolete). resolve_ids.py reuses its lookup call, resolves every active game on every run and writes
+a snapshot to S3 instead.
+"""
 import os
 import time
 import requests

@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: game_coverage
+    description: >
+      Data observability: one row per game in the tracked_games seed, with a flag per data path showing what
+      the game actually received. Read from staging, so a game that dim_game drops (no appdetails) still shows.
+      After adding a game to tracked_games.csv, check this model after the next pipeline run.
+      A game without an OpenCritic override has no critic reviews by design (OpenCritic is manual-only).
+    columns:
+      - name: steam_app_id
+        data_tests:
+          - unique
+          - not_null
+      - name: in_dim_game
+        description: >
+          False when a tracked game has no successful Steam appdetails fetch. The game is then excluded from
+          dim_game and every fact (e.g. Dying Light, 239140, before it was dropped). Warns rather than fails,
+          so one bad game can't break the build.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
+              config:
+                severity: warn
+      - name: has_itad_id
+        description: "ITAD UUID resolved (automatically or by manual override). See itad_status for not_found / no_coverage."
+      - name: has_5min_backfill
+        description: "5-minute PlayerCountHistoryPart1 backfill present. Only ~22 games are in that dataset; false is normal."

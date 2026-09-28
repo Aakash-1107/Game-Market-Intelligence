@@ -9,7 +9,7 @@ with live as (
         'hourly'::varchar           as data_resolution,
         filename                    as source_file
 
-    from read_parquet('s3://game-market-raw/raw/steam/player_counts/[0-9][0-9][0-9][0-9]/**/*.parquet', filename = true)
+    from read_parquet('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/player_counts/[0-9][0-9][0-9][0-9]/**/*.parquet', filename = true)
 
     where player_count is not null
 
@@ -24,7 +24,7 @@ backfill as (
         data_resolution::varchar    as data_resolution,
         filename                    as source_file
 
-    from read_parquet('s3://game-market-raw/raw/steam/player_counts/backfill/**/*.parquet', filename = true)
+    from read_parquet('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/player_counts/backfill/**/*.parquet', filename = true)
 
     where player_count is not null
 

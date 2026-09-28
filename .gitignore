@@ -12,6 +12,7 @@ venv.bak/
 # Environment variables & Secrets
 .env
 .env.*
+!.env.example
 Secrets/
 secrets/
 *.pem

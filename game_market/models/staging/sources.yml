@@ -7,7 +7,7 @@ sources:
       - name: player_counts
         description: "Hourly concurrent player counts per game, ingested via Prefect"
         meta:
-          external_location: "read_parquet('s3://game-market-raw/raw/steam/player_counts/[0-9][0-9][0-9][0-9]/**/*.parquet')"
+          external_location: "read_parquet('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/player_counts/[0-9][0-9][0-9][0-9]/**/*.parquet')"
         columns:
           - name: id
             description: "Row ID from Neon — not meaningful in the analytical layer"
@@ -23,7 +23,7 @@ sources:
       - name: app_list
         description: "Full Steam app catalogue — appid and name for all Steam applications"
         meta:
-          external_location: "read_csv_auto('s3://game-market-raw/raw/steam/app_list/steam_app_list.csv')"
+          external_location: "read_csv_auto('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/app_list/steam_app_list.csv')"
         columns:
           - name: appid
             description: "Steam App ID"
@@ -33,7 +33,7 @@ sources:
       - name: app_details
         description: "Raw Steam appdetails JSON, one file per game per ingestion run"
         meta:
-          external_location: "read_json('s3://game-market-raw/raw/steam/app_details/*/*/*/app_details_*.json', union_by_name = true, ignore_errors = true)"
+          external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/app_details/*/*/*/app_details_*.json', union_by_name = true, ignore_errors = true)"
         columns:
           - name: steam_app_id
             description: "Steam App ID — matches game_source_mapping"
@@ -48,7 +48,7 @@ sources:
       - name: reviews
         description: "Raw Steam appreviews JSON, one file per game per ingestion run. Each file holds a query_summary (lifetime totals) and a reviews array (sampled individual reviews)."
         meta:
-          external_location: "read_json('s3://game-market-raw/raw/steam/reviews/*/*/*/*reviews_*.json', format = 'auto')"
+          external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/reviews/*/*/*/*reviews_*.json', format = 'auto')"
         columns:
           - name: steam_app_id
             description: "Steam App ID"
@@ -71,14 +71,14 @@ sources:
           TIMESTAMPTZ itself. (A `columns = {...}` argument can't be used here: dbt-duckdb formats
           external_location with str.format_map, so curly braces break it.)
         meta:
-          external_location: "read_json('s3://game-market-raw/raw/itad/price_history/*/*/*/*_*.json', format = 'auto', maximum_depth = 1)"
+          external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/itad/price_history/*/*/*/*_*.json', format = 'auto', maximum_depth = 1)"
 
   - name: opencritic_raw
     tables:
       - name: reviews
         description: "Raw OpenCritic critic reviews, one file per game per run"
         meta:
-          external_location: "read_json('s3://game-market-raw/raw/opencritic/reviews/*/*/*/*.json', format = 'auto', union_by_name = true)"
+          external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/opencritic/reviews/*/*/*/*.json', format = 'auto', union_by_name = true)"
         columns:
           - name: steam_app_id
             tests:
@@ -91,7 +91,7 @@ sources:
       - name: steamcharts_monthly
         description: "Monthly avg/peak player counts, 6,729 games, Aug 2012–Sept 2025 (CC0, Victor Laputsky)"
         meta:
-          external_location: "read_csv('s3://game-market-raw/raw/kaggle/steamcharts_monthly_players/steamcharts.csv', all_varchar=true, header=true)"
+          external_location: "read_csv('s3://{{ env_var('AWS_BUCKET') }}/raw/kaggle/steamcharts_monthly_players/steamcharts.csv', all_varchar=true, header=true)"
           
         columns:
           - name: steam_appid
@@ -103,4 +103,15 @@ sources:
     tables:
       - name: monthly
         meta:
-          external_location: "read_parquet('s3://game-market-raw/raw/steamcharts/monthly/*/*/*/*.parquet', union_by_name = true)"
+          external_location: "read_parquet('s3://{{ env_var('AWS_BUCKET') }}/raw/steamcharts/monthly/*/*/*/*.parquet', union_by_name = true)"
+
+  - name: mappings_raw
+    description: "Machine-resolved source IDs, written by src/ingestion/resolve_ids.py at the start of every daily run"
+    tables:
+      - name: itad_mapping
+        description: >
+          One snapshot file per resolution run: resolved_at_utc plus a mappings array
+          (steam_app_id, itad_game_id, status, …). Status is matched_auto, matched_manual, matched_imported, no_coverage,
+          not_found or error. Manual overrides are already applied by the resolver.
+        meta:
+          external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/mappings/itad/*/*/*/itad_mapping_*.json', format = 'auto')"

@@ -111,3 +111,25 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['steam_app_id', 'activity_month']
+
+  - name: stg_source_id_mapping
+    description: >
+      Source IDs per tracked game. Replaces the obsolete Neon table game_source_mapping. ITAD comes from the latest resolve_ids.py snapshot in S3 (transient errors
+      ignored). Rows in the manual_id_overrides seed always win, and OpenCritic comes only from there.
+      Grain: one row per (steam_app_id, source).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['steam_app_id', 'source']
+    columns:
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['matched_auto', 'matched_manual', 'matched_imported', 'no_coverage', 'not_found']
+      - name: source_game_id
+        data_tests:
+          - not_null:
+              config:
+                where: "status in ('matched_auto', 'matched_manual', 'matched_imported')"

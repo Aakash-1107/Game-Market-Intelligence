@@ -40,6 +40,8 @@ models:
         +docs: {node_color: "#2E8B57"}  # green — facts & dims
       analytics:
         +docs: {node_color: "#B5446E"}  # raspberry — an_* question models
+      monitoring:
+        +docs: {node_color: "#6B7280"}  # grey — data observability (game_coverage)
 
 seeds:
   game_market:
