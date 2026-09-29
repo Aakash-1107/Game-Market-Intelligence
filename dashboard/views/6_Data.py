@@ -15,22 +15,22 @@ page_header(
 
 c = query("""
     select
-        (select count(distinct steam_app_id) from fact_player_activity where data_resolution = 'hourly') as live_games,
-        (select count(distinct steam_app_id) from fact_player_activity_monthly)                          as monthly_games,
-        (select count(*) from fact_player_activity_monthly)                                              as monthly_rows,
-        (select count(distinct steam_app_id) from fact_player_activity where data_resolution = '5min')   as fine_games,
-        (select count(distinct steam_app_id) from fact_price_snapshot)                                   as price_games,
-        (select min(observed_at) from fact_price_snapshot)                                               as price_first,
-        (select count(distinct steam_app_id) from fact_reviews)                                          as review_games,
-        (select count(*) from an_sale_effect)                                                            as sale_periods,
-        (select count(*) from an_market_anomalies)                                                       as days_checked
+        (select count(distinct steam_app_id) from marts.fact_player_activity where data_resolution = 'hourly') as live_games,
+        (select count(distinct steam_app_id) from marts.fact_player_activity_monthly)                    as monthly_games,
+        (select count(*) from marts.fact_player_activity_monthly)                                        as monthly_rows,
+        (select count(distinct steam_app_id) from marts.fact_player_activity where data_resolution = '5min') as fine_games,
+        (select count(distinct steam_app_id) from marts.fact_price_snapshot)                             as price_games,
+        (select min(observed_at) from marts.fact_price_snapshot)                                         as price_first,
+        (select count(distinct steam_app_id) from marts.fact_reviews)                                    as review_games,
+        (select count(*) from reporting.rpt_discount_effect)                                             as sale_periods,
+        (select count(*) from reporting.rpt_market_anomalies)                                            as days_checked
 """).iloc[0]
 missing = query("""
     select string_agg(name, ', ' order by name) filter (where steam_app_id not in
-               (select steam_app_id from fact_player_activity_monthly))                  as no_monthly,
+               (select steam_app_id from marts.fact_player_activity_monthly))            as no_monthly,
            string_agg(name, ', ' order by name) filter (where steam_app_id not in
-               (select steam_app_id from fact_price_snapshot))                           as no_prices
-    from dim_game
+               (select steam_app_id from marts.fact_price_snapshot))                     as no_prices
+    from marts.dim_game
 """).iloc[0]
 
 # ---- What we collect ----------------------------------------------------------------------------
@@ -69,8 +69,8 @@ st.table(
         ("Monthly player averages", "fact_player_activity_monthly", c.monthly_rows),
         ("Price changes", "fact_price_snapshot", k.price_changes),
         ("Player reviews", "fact_reviews", k.reviews),
-        ("Discount periods measured (page: Do discounts bring players?)", "an_sale_effect", c.sale_periods),
-        ("Game-days checked for unusual activity (page: Unusual days)", "an_market_anomalies", c.days_checked),
+        ("Discount periods measured (page: Do discounts bring players?)", "rpt_discount_effect", c.sale_periods),
+        ("Game-days checked for unusual activity (page: Unusual days)", "rpt_market_anomalies", c.days_checked),
     ], columns=["What", "Table", "Rows"]).assign(Rows=lambda d: d["Rows"].map(lambda n: f"{n:,}")),
     hide_index=True,
 )

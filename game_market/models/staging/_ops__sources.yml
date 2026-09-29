@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: ops
+    description: >
+      Pipeline logs in Neon, read live through a read-only DuckDB attach (profiles.yml: attach alias `ops`,
+      type postgres, path = env_var('DATABASE_URL')). dbt build therefore needs DATABASE_URL.
+    database: ops
+    schema: public
+    tables:
+      - name: ingestion_log
+        description: "One row per game per ingestion stage per script run (all ingestion scripts, including the hourly flow). DDL: sql/ddl/ingestion_log.sql"
+      - name: pipeline_run_log
+        description: "One row per daily-flow run per stage (running / success / failed / skipped). DDL: sql/ddl/observability.sql"
+      - name: dbt_node_result
+        description: "One row per dbt node per dbt invocation of the daily flow, from run_results.json. DDL: sql/ddl/observability.sql"

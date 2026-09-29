@@ -12,13 +12,13 @@ import json
 import time
 import boto3
 import requests
-import psycopg2
 from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
+from src.common.log_db import connect_log_db  # noqa: E402
 
 load_dotenv()
 
@@ -118,7 +118,7 @@ def main(requested: list[int] | None = None) -> dict:
     run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
     print(f"Steam appdetails ingestion started — {run_timestamp}")
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = connect_log_db(DATABASE_URL)
     s3_client = boto3.client(
         "s3",
         region_name=AWS_REGION,

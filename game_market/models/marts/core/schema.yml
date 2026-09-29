@@ -37,6 +37,10 @@ models:
                 max_value: 100
               config:
                 where: "review_positivity_pct is not null"   # games without review data are allowed
+      - name: steam_release_context
+        description: "From seed seed_steam_release_context: e.g. 'later_steam_release' when the Steam release is not the original launch. NULL = not listed (treated as original launch)."
+      - name: steam_release_context_note
+        description: "Human-written note from seed_steam_release_context. NULL = not listed."
 
   - name: fact_player_activity
     description: "One row per game per observation timestamp. Grain: one player count observation for one game at one point in time."
@@ -175,3 +179,63 @@ models:
           - accepted_values:
               arguments:
                 values: ['steamcharts', 'kaggle']
+
+  - name: fact_player_activity_daily
+    description: "One row per game per UTC day of player activity (5-minute backfill and hourly live days). Thin copy of int_player_activity_daily."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [steam_app_id, activity_date]
+    columns:
+      - name: activity_day_key
+        description: "MD5 surrogate key of the grain (steam_app_id | activity_date)"
+        data_tests:
+          - unique
+          - not_null
+      - name: game_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: game_key
+
+  - name: fact_price_daily
+    description: "One row per game per day of Steam price (shop 61), forward-filled between ITAD price events. Thin copy of int_price_daily."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [steam_app_id, price_date]
+    columns:
+      - name: price_day_key
+        description: "MD5 surrogate key of the grain (steam_app_id | price_date)"
+        data_tests:
+          - unique
+          - not_null
+      - name: game_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: game_key
+
+  - name: fact_discount_episode
+    description: "One row per Steam discount period per game (consecutive discounted days). Thin copy of int_sale_episodes. 'Sale' = Steam discount period, not units sold."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [steam_app_id, sale_start]
+    columns:
+      - name: sale_episode_key
+        description: "MD5 surrogate key of the grain (steam_app_id | sale_start)"
+        data_tests:
+          - unique
+          - not_null
+      - name: game_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: game_key

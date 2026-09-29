@@ -28,11 +28,11 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import boto3
-import psycopg2
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
+from src.common.log_db import connect_log_db  # noqa: E402
 
 load_dotenv()
 
@@ -43,7 +43,7 @@ AWS_BUCKET = os.environ["AWS_BUCKET"]
 AWS_REGION = os.environ["AWS_REGION"]
 AWS_ACCESS_KEY = os.environ["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY = os.environ["AWS_SECRET_KEY"]
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Known bad row — systematic zero across all Part1 files
 BAD_TIMESTAMP = "2017-12-14 01:05"
@@ -67,7 +67,7 @@ def get_s3_client():
 
 
 def get_pg_connection():
-    return psycopg2.connect(DATABASE_URL)
+    return connect_log_db(DATABASE_URL)
 
 
 def load_and_clean_csv(filepath: Path, app_id: int) -> pd.DataFrame:

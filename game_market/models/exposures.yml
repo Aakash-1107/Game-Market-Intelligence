@@ -1,10 +1,10 @@
 version: 2
 
-# One exposure per Streamlit page (dashboard/home.py navigation).
+# One exposure per Streamlit page (dashboard/home.py navigation). The dashboard reads schemas `reporting`
+# (rpt_* question models) and `marts` (gold facts and dim_game) only, never staging or intermediate.
 # depends_on = tables each page actually queries, including via the shared helpers in
 # dashboard/common.py: coverage() -> fact_player_activity, fact_player_activity_monthly;
-# live_snapshot() -> fact_player_activity, fact_player_activity_monthly, dim_game;
-# daily_activity() -> fact_player_activity.
+# live_snapshot() -> fact_player_activity, fact_player_activity_monthly, dim_game.
 
 exposures:
   - name: dashboard_market_overview
@@ -33,7 +33,9 @@ exposures:
     owner:
       name: Ash
     depends_on:
-      - ref('an_game_lifecycle')
+      - ref('rpt_game_lifecycle')
+      - ref('rpt_lifecycle_curve')
+      - ref('rpt_lifecycle_typical_curve')
       - ref('fact_player_activity_monthly')
       - ref('fact_player_activity')
 
@@ -47,7 +49,7 @@ exposures:
     owner:
       name: Ash
     depends_on:
-      - ref('an_activity_health')
+      - ref('rpt_activity_health')
       - ref('fact_player_activity_monthly')
 
   - name: dashboard_do_discounts_bring_players
@@ -60,7 +62,9 @@ exposures:
     owner:
       name: Ash
     depends_on:
-      - ref('an_sale_effect')
+      - ref('rpt_discount_effect')
+      - ref('rpt_discount_typical')
+      - ref('rpt_discount_effect_daily')
       - ref('dim_game')
       - ref('fact_player_activity')
       - ref('fact_player_activity_monthly')
@@ -75,8 +79,8 @@ exposures:
     owner:
       name: Ash
     depends_on:
-      - ref('an_market_anomalies')
-      - ref('an_sale_effect')
+      - ref('rpt_market_anomalies')
+      - ref('rpt_discount_effect')
       - ref('dim_game')
       - ref('fact_player_activity')
       - ref('fact_player_activity_monthly')
@@ -87,15 +91,48 @@ exposures:
     maturity: medium
     description: >
       Streamlit page dashboard/views/5_Game_Explorer.py. Per-game drill-down: activity,
-      lifecycle and health class, price history, user and critic reviews.
+      lifecycle and health class, price history, Steam user reviews.
     owner:
       name: Ash
     depends_on:
       - ref('dim_game')
-      - ref('an_game_lifecycle')
-      - ref('an_activity_health')
+      - ref('rpt_game_lifecycle')
+      - ref('rpt_activity_health')
       - ref('fact_player_activity')
       - ref('fact_player_activity_monthly')
       - ref('fact_price_snapshot')
       - ref('fact_reviews')
-      - ref('fact_critic_review')
+
+  - name: dashboard_how_the_data_is_built
+    label: "Dashboard — How the data is built"
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit page dashboard/views/6_Data.py. Sources, refresh cadence, coverage per source
+      and games missing monthly or price data.
+    owner:
+      name: Ash
+    depends_on:
+      - ref('dim_game')
+      - ref('fact_player_activity')
+      - ref('fact_player_activity_monthly')
+      - ref('fact_price_snapshot')
+      - ref('fact_reviews')
+      - ref('rpt_discount_effect')
+      - ref('rpt_market_anomalies')
+
+  - name: dashboard_pipeline_health
+    label: "Dashboard — Pipeline health"
+    type: dashboard
+    maturity: medium
+    description: >
+      Streamlit page dashboard/views/7_Pipeline_Health.py. Health per pipeline component (computed at read time),
+      daily ingestion completeness per source, and the latest dbt builds of the daily flow. Needs the read-only
+      Neon attach (DATABASE_URL).
+    tags: ["observability"]
+    owner:
+      name: Ash
+    depends_on:
+      - ref('mart_pipeline_health')
+      - ref('mart_ingestion_daily')
+      - ref('mart_dbt_run_history')

@@ -15,13 +15,13 @@ import json
 import time
 import boto3
 import requests
-import psycopg2
 from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.ingestion.resolve_ids import resolve_itad_ids  # noqa: E402
+from src.common.log_db import connect_log_db  # noqa: E402
 
 load_dotenv()
 
@@ -108,7 +108,7 @@ def main(mappings: dict[int, str] | None = None, app_ids: list[int] | None = Non
         mappings = resolve_itad_ids(app_ids)
 
     # --- Connections ---
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = connect_log_db(DATABASE_URL)
     s3_client = boto3.client(
         "s3",
         region_name=AWS_REGION,

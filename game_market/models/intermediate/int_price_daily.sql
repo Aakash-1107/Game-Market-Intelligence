@@ -1,6 +1,33 @@
 {{ config(materialized='table') }}
 
-with steam_prices as (
+-- Reads staging directly (not fact_price_snapshot) and applies the same rules the fact applies:
+--   * one row per (itad_game_id, shop_id, observed_at), same tie-break as the fact
+--     (a no-op since stg_itad__price_history guarantees that grain; kept as a safeguard),
+--   * is_on_sale = discount_pct > 0,
+--   * tracked games only (int_tracked_games; untracked ITAD history such as Dying Light stays out).
+
+with deduplicated as (
+
+    select
+        p.steam_app_id,
+        p.itad_game_id,
+        p.shop_id,
+        p.observed_at,
+        p.price_amount,
+        p.regular_amount,
+        p.discount_pct,
+        p.currency
+    from {{ ref('stg_itad__price_history') }} p
+    inner join {{ ref('int_tracked_games') }} t
+        on p.steam_app_id = t.steam_app_id
+    qualify row_number() over (
+        partition by p.itad_game_id, p.shop_id, p.observed_at
+        order by (p.price_amount = 0 and p.discount_pct = 0), p.discount_pct desc, p.price_amount
+    ) = 1
+
+),
+
+steam_prices as (
 
     select
         steam_app_id,
@@ -8,7 +35,7 @@ with steam_prices as (
         price_amount,
         regular_amount,
         discount_pct,
-        is_on_sale,
+        case when discount_pct > 0 then true else false end as is_on_sale,
         currency,
         row_number() over (
             partition by steam_app_id,
@@ -16,8 +43,8 @@ with steam_prices as (
             order by observed_at desc
         ) as rn
 
-    from {{ ref('fact_price_snapshot') }}
-    where shop_id = 61
+    from deduplicated
+    where shop_id = 61   -- Steam
 
 ),
 

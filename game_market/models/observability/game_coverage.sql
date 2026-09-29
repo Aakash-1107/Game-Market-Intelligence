@@ -73,12 +73,12 @@ critic as (
 -- Q1-Q4 membership, using the same rule each dashboard page applies
 q1 as (
     select steam_app_id, lifecycle_status
-    from {{ ref('an_game_lifecycle') }}
+    from {{ ref('rpt_game_lifecycle') }}
 ),
 
 q2 as (
     select steam_app_id, health_class
-    from {{ ref('an_activity_health') }}
+    from {{ ref('rpt_activity_health') }}
 ),
 
 steam_prices as (
@@ -93,7 +93,7 @@ q3 as (
         count(*) filter (where episode_status = 'valid')              as valid_episodes,
         count(*) filter (where episode_status <> 'no_activity_data')  as episodes_with_activity,
         mode(episode_status) filter (where episode_status not in ('valid', 'no_activity_data')) as top_invalid_status
-    from {{ ref('an_sale_effect') }}
+    from {{ ref('rpt_discount_effect') }}
     group by steam_app_id
 ),
 
@@ -102,7 +102,7 @@ q4 as (
         steam_app_id,
         count(*)                                                      as complete_days,
         count(*) filter (where anomaly_status = 'scored')             as scored_days
-    from {{ ref('an_market_anomalies') }}
+    from {{ ref('rpt_market_anomalies') }}
     group by steam_app_id
 )
 

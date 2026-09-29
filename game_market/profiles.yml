@@ -1,0 +1,41 @@
+# dbt profile for this project. Every credential comes from the environment (.env; see .env.example), so this file
+# is safe to commit. dbt finds it because it runs from game_market/ (dbt checks the working directory before
+# ~/.dbt); the daily flow also passes --profiles-dir explicitly. Elsewhere: --profiles-dir game_market or
+# DBT_PROFILES_DIR=game_market. dbt also loads the repo's .env itself (it searches upward from the working directory).
+#
+# Targets:
+#   dev        (default)  everything, including the observability models: needs DATABASE_URL (the Neon attach)
+#   analytics             no Neon: dbt build --target analytics --exclude tag:observability
+game_market:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # relative to game_market/ (where dbt runs); set DUCKDB_PATH to an absolute path to use another file
+      path: "{{ env_var('DUCKDB_PATH', '../data/game_market.duckdb') }}"
+      threads: 1                 # 4 parallel S3 scans ran out of memory on a 5.8 GB machine (2026-09-28)
+      extensions:
+        - httpfs
+        - postgres
+      settings:
+        s3_region: "{{ env_var('AWS_REGION') }}"
+        s3_access_key_id: "{{ env_var('AWS_ACCESS_KEY') }}"
+        s3_secret_access_key: "{{ env_var('AWS_SECRET_KEY') }}"
+      # pipeline logs (read-only) for the observability source `ops`: ingestion_log, pipeline_run_log,
+      # dbt_node_result. Any Postgres works (Neon in production, a local Postgres for reproduction).
+      attach:
+        - path: "{{ env_var('DATABASE_URL') }}"
+          type: postgres
+          alias: ops
+          read_only: true
+
+    analytics:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '../data/game_market.duckdb') }}"
+      threads: 1
+      extensions:
+        - httpfs
+      settings:
+        s3_region: "{{ env_var('AWS_REGION') }}"
+        s3_access_key_id: "{{ env_var('AWS_ACCESS_KEY') }}"
+        s3_secret_access_key: "{{ env_var('AWS_SECRET_KEY') }}"

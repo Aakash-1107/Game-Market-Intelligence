@@ -1,0 +1,102 @@
+version: 2
+
+models:
+  - name: game_coverage
+    description: >
+      Data observability: one row per game in the tracked_games seed, with a flag per data path showing what
+      the game actually received. Read from staging, so a game that dim_game drops (no appdetails) still shows.
+      After adding a game to tracked_games.csv, check this model after the next pipeline run.
+      A game without an OpenCritic override has no critic reviews by design (OpenCritic is manual-only).
+    columns:
+      - name: steam_app_id
+        data_tests:
+          - unique
+          - not_null
+      - name: in_dim_game
+        description: >
+          False when a tracked game has no successful Steam appdetails fetch. The game is then excluded from
+          dim_game and every fact (e.g. Dying Light, 239140, before it was dropped). Warns rather than fails,
+          so one bad game can't break the build.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
+              config:
+                severity: warn
+      - name: has_itad_id
+        description: "ITAD UUID resolved (automatically or by manual override). See itad_status for not_found / no_coverage."
+      - name: has_5min_backfill
+        description: "5-minute PlayerCountHistoryPart1 backfill present. Only ~22 games are in that dataset; false is normal."
+      - name: in_q1_lifecycle
+        description: "In Q1 (Life after launch): rpt_game_lifecycle.lifecycle_status = 'launch_observed', the dashboard's rule. q1_reason says why not."
+      - name: in_q2_activity_health
+        description: "In Q2 (Activity health): rpt_activity_health assigned a health class. q2_reason says why not."
+      - name: in_q3_sale_effect
+        description: >
+          In Q3 (Do sales bring players): at least one rpt_discount_effect episode with episode_status = 'valid'.
+          Q3 uses only the 5-minute backfill (2017-12 to 2020-08), so hourly data never qualifies a game. q3_reason says why not.
+      - name: in_q4_market_events
+        description: >
+          In Q4 (Unusual days): at least one rpt_market_anomalies day with anomaly_status = 'scored'.
+          Q4 uses only the 5-minute backfill (2017-12 to 2020-08), so hourly data never qualifies a game. q4_reason says why not.
+
+  - name: mart_pipeline_health
+    description: >
+      One row per pipeline component (hourly_player_counts, prices, app_details, reviews, steamcharts_monthly,
+      dbt_build). A VIEW: health is computed when read, against now(), over staging views that read Neon live.
+      Thresholds: hourly ok <= 2 h, warn <= 6 h, fail > 6 h since the last success; daily sources and dbt_build
+      ok <= 26 h, warn <= 48 h, fail > 48 h. At least warn when the latest attempt failed, partly failed or was
+      skipped; dbt_build fails when its latest recorded invocation had an error or a failing test.
+    columns:
+      - name: component
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['hourly_player_counts', 'prices', 'app_details', 'reviews', 'steamcharts_monthly', 'dbt_build']
+      - name: health_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['ok', 'warn', 'fail']
+      - name: last_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['success', 'partial', 'failed', 'skipped', 'running', 'never_run']
+
+  - name: mart_ingestion_daily
+    description: >
+      One row per monitored source per UTC day (days without attempts included, with zeros). expected = active games
+      (tracked_games today) x slots per day (hourly 24, daily 1); completeness_pct = succeeded slots / expected.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [component, activity_date]
+    columns:
+      - name: component
+        data_tests:
+          - not_null
+      - name: activity_date
+        data_tests:
+          - not_null
+      - name: completeness_pct
+        data_tests:
+          - not_null
+
+  - name: mart_dbt_run_history
+    description: "One row per dbt invocation recorded by the daily flow: models ok/error, tests pass/warn/fail, overall status."
+    columns:
+      - name: invocation_id
+        data_tests:
+          - unique
+          - not_null
+      - name: overall_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['success', 'warn', 'failed']

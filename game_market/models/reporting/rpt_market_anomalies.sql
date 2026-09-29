@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 
--- Q4 anomalies. Grain: one row per game per day, scope = 5-minute backfill only (21 games, Dec 2017-Aug 2020).
+-- Q4 anomalies. Grain: one row per game per day, scope = games with 5-minute backfill data (Dec 2017-Aug 2020).
 -- z-score vs trailing 28-day baseline (excluding the day itself). Observational: flags days, does not claim cause.
 
 with daily as (
@@ -9,7 +9,7 @@ with daily as (
         activity_date,
         avg_players,
         ln(avg_players) as log_players
-    from {{ ref('int_player_activity_daily') }}
+    from {{ ref('fact_player_activity_daily') }}
     where data_resolution = '5min'
       and is_complete_day
       and avg_players > 0
@@ -19,6 +19,7 @@ baseline as (
     select
         d.steam_app_id,
         d.activity_date,
+        d.avg_players,
         d.log_players,
         avg(b.log_players)    as baseline_mean,
         stddev_samp(b.log_players) as baseline_stddev,
@@ -27,13 +28,14 @@ baseline as (
     left join daily b
         on b.steam_app_id = d.steam_app_id
        and b.activity_date between d.activity_date - 28 and d.activity_date - 1
-    group by d.steam_app_id, d.activity_date, d.log_players
+    group by d.steam_app_id, d.activity_date, d.avg_players, d.log_players
 ),
 
 scored as (
     select
         steam_app_id,
         activity_date,
+        avg_players,
         log_players,
         baseline_mean,
         baseline_stddev,
@@ -52,7 +54,7 @@ sale_flag as (
         sale_start + cast(i as integer) as flagged_date,
         sale_start,
         max_discount_pct
-    from {{ ref('int_sale_episodes') }}, range(0, sale_days) as t(i)
+    from {{ ref('fact_discount_episode') }}, range(0, sale_days) as t(i)
 ),
 
 flagged as (
@@ -87,7 +89,15 @@ select
     sf.flagged_date is not null as during_sale,
     sf.max_discount_pct as sale_discount_pct,
     sf.sale_start,
-    coalesce(abs(date_diff('day', cast(g.release_date as date), f.activity_date)) <= 7, false) as near_release
+    coalesce(abs(date_diff('day', cast(g.release_date as date), f.activity_date)) <= 7, false) as near_release,
+    -- baseline behind z_score, stored so charts plot exactly what was tested (UTC days, 5-minute backfill)
+    f.avg_players,                                            -- actual daily average players
+    f.baseline_days,
+    f.baseline_mean                          as baseline_log_mean,     -- mean of ln(players), previous 28 days
+    f.baseline_stddev                        as baseline_log_stddev,
+    case when f.anomaly_status = 'scored' then exp(f.baseline_mean) end                           as baseline_players,
+    case when f.anomaly_status = 'scored' then exp(f.baseline_mean - 3 * f.baseline_stddev) end   as band_lower_players,
+    case when f.anomaly_status = 'scored' then exp(f.baseline_mean + 3 * f.baseline_stddev) end   as band_upper_players
 from flagged f
 inner join {{ ref('dim_game') }} g on f.steam_app_id = g.steam_app_id
 left join sale_flag sf on sf.steam_app_id = f.steam_app_id and sf.flagged_date = f.activity_date

@@ -6,11 +6,13 @@ from common import (COUNT_AXIS, HEALTH, HEALTH_ORDER, HOVER_HINT, INK, INK_2, LE
                     highlight_lines, legend_filter, page_header, pct, scale_for, spread_labels)
 from db import query
 
-bounds = query("select min(window_start) as window_start, max(window_end) as window_end from an_activity_health").iloc[0]
+bounds = query("select min(window_start) as window_start, max(window_end) as window_end from reporting.rpt_activity_health").iloc[0]
 window_start, window_end = pd.Timestamp(bounds.window_start), pd.Timestamp(bounds.window_end)
 period = f"{window_start:%b %Y} – {window_end:%b %Y}"
-# current_level_3m = the last 3 months of the window (month_num >= 9 in an_activity_health)
+# current_level_3m = the last 3 months of the window (month_num >= 9 in rpt_activity_health)
 recent = f"{window_end - pd.DateOffset(months=2):%b}–{window_end:%b %Y}"
+# start_level_3m = the first 3 months of the window (month_num <= 2): the 100% of this page's indexed charts
+start = f"{window_start:%b}–{window_start + pd.DateOffset(months=2):%b %Y}"
 next_month = window_end + pd.DateOffset(months=1)
 
 page_header(
@@ -25,7 +27,7 @@ page_header(
 h = query("""
     select steam_app_id, name, health_class, window_start, window_end, start_level_3m, current_level_3m,
            change_12m_pct, trend_monthly_pct, size_tier
-    from an_activity_health
+    from reporting.rpt_activity_health
 """)
 h["health"] = h["health_class"].map(lambda c: HEALTH[c][0])
 
@@ -63,8 +65,8 @@ clipped = plot[plot["change_12m_pct"] > CAP]
 
 trend = query("""
     select h.name, h.health_class, m.activity_month, m.avg_players / h.start_level_3m as vs_start
-    from an_activity_health h
-    join fact_player_activity_monthly m
+    from reporting.rpt_activity_health h
+    join marts.fact_player_activity_monthly m
       on m.steam_app_id = h.steam_app_id and m.activity_month between h.window_start and h.window_end
     where h.start_level_3m > 0
 """)
@@ -117,7 +119,9 @@ def compare_section():
     chart_block(
         "Games of the same size can be heading in opposite directions",
         f"Each dot is one game. Further right = more players in {recent} (each gridline is about 3× the one before). "
-        f"Higher up = gained players over {period} ({recent} compared with the first 3 months), below the grey line = lost players. "
+        f"Higher up = gained players: the {recent} average compared with the {start} average (**the first three months "
+        f"of the window = 100%**, so the grey line at 0% = no change). Not combined: one dot per game, {len(plot)} games"
+        + (f" ({len(clipped)} above +{CAP:.0%} is drawn at the top edge)" if len(clipped) else "") + ". "
         "The colour (and shape) shows the health class, based on how steady the trend was — not just start vs. end. "
         "**Click a dot** to add that game to the trend chart below (dark ring = already there). " + LEGEND_HINT,
         (zero + pts + note).properties(height=440),
@@ -153,7 +157,8 @@ def compare_section():
         f"{top['name']} is at {pct(top['vs_start'])} of where it started the year"
     chart_block(
         title,
-        "Each line is one game. 100% (grey line) is its average over the first three months of the window. "
+        f"Each line is one game. **100%** (grey line) is that game's own average over {start}, the first three months "
+        f"of the window. Not combined: one line per game you pick (from {len(judged)} games). "
         "A line above 100% means more players than at the start of the year. Colours match the health classes above. "
         + HOVER_HINT,
         alt.layer(base, *highlight_lines(lines, "health"), end_labels).properties(height=380),

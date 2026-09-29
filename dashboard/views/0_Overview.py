@@ -8,10 +8,9 @@ from db import query
 
 cov = coverage()
 live_last = local(cov.live_last)
-project_header("What happens to PC games after they come out? This dashboard follows 54 popular PC games on "
-               "Steam: how many people play them, how their prices change, and what players say about them.")
-
 k = pipeline_counts()
+project_header(f"What happens to PC games after they come out? This dashboard follows {k.games} popular PC games on "
+               "Steam: how many people play them, how their prices change, and what players say about them.")
 
 # ---- Pipeline scale ----------------------------------------------------------------------------
 with st.container(horizontal=True):  # wraps to 2x2 on narrow windows instead of truncating the numbers
@@ -39,7 +38,8 @@ with c3:
     st.metric(f"Biggest drop vs. {month:%B}", down_row["name"], f"{pct(down_row['vs_last_month'], signed=True)}",
               border=True, height="stretch", help=vs_help)
 
-movers = pd.concat([comparable.nlargest(6, "vs_last_month"), comparable.nsmallest(6, "vs_last_month")]).drop_duplicates("steam_app_id")
+N_MOVERS = 6  # rises and falls shown each
+movers = pd.concat([comparable.nlargest(N_MOVERS, "vs_last_month"), comparable.nsmallest(N_MOVERS, "vs_last_month")]).drop_duplicates("steam_app_id")
 movers["direction"] = movers["vs_last_month"].map(lambda v: "Up" if v >= 0 else "Down")
 # Explicit order: Vega-Lite drops sort="-x" when bars and labels are layered (the bars came out alphabetical)
 mover_order = movers.sort_values("vs_last_month", ascending=False)["name"].tolist()
@@ -60,8 +60,9 @@ move_labels_neg = move_bars.mark_text(dx=-4, align="right", color=INK_2).encode(
     text=alt.Text("vs_last_month:Q", format="+.0%"), color=alt.value(INK_2))
 chart_block(
     "Which games gained or lost the most players this week?",
-    f"The 6 biggest rises and 6 biggest falls: each game's average players over the last 7 days compared with its "
-    f"{month:%B %Y} monthly average. The scale is compressed so a +800% jump and a −50% dip both fit.",
+    f"The {N_MOVERS} biggest rises and {N_MOVERS} biggest falls among the {len(comparable)} games with both numbers: "
+    f"each game's average players over the last 7 days compared with **its own {month:%B %Y} monthly average (= 100%, "
+    "so 0% = no change)**. Not combined: one bar per game. The scale is compressed so a +800% jump and a −50% dip both fit.",
     alt.layer(move_bars,
               move_labels.transform_filter("datum.vs_last_month >= 0"),
               move_labels_neg.transform_filter("datum.vs_last_month < 0")).properties(height=300),
@@ -88,7 +89,7 @@ with st.expander("All games right now"):
 
 genres = query("""
     select trim(g) as genre, count(*) as games
-    from dim_game, unnest(string_split(steam_genres, ',')) as t(g)
+    from marts.dim_game, unnest(string_split(steam_genres, ',')) as t(g)
     where steam_genres is not null
     group by 1
     order by 2 desc
@@ -105,7 +106,7 @@ labels = bars.mark_text(align="left", dx=4, color=INK_2).encode(text="games:Q")
 chart_block(
     f"{lead.genre} games make up the biggest share: {lead.games} of the {k.games} games we follow",
     "Each bar counts the games that Steam files under that genre. A game can have several genres, "
-    "so the bars add up to more than 54.",
+    f"so the bars add up to more than {k.games}.",
     (bars + labels).properties(height=320),
     "The selection leans towards big action and role-playing games, so results describe popular, "
     "mainstream PC games more than small niche titles.",

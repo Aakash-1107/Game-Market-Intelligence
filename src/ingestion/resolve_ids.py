@@ -24,11 +24,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
-import psycopg2
 import requests
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.log_db import connect_log_db  # noqa: E402
 from src.common.tracked_games import (  # noqa: E402
     MATCHED_OVERRIDE_STATUSES, load_manual_overrides, load_tracked_app_ids,
 )
@@ -146,7 +146,7 @@ def resolve_itad_ids(app_ids: list[int] | None = None) -> dict[int, str]:
 
     overrides = load_manual_overrides(SOURCE)
     run_at = datetime.now(timezone.utc)
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = connect_log_db(DATABASE_URL)
     s3_client = boto3.client(
         "s3",
         region_name=AWS_REGION,

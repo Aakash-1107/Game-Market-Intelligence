@@ -28,7 +28,7 @@ GRID = "#e1e0d9"
 SALE_WASH = "#eda100"  # sale periods: a translucent wash behind the line, never a data mark
 STEAM_WIDE = "Steam-wide (3+ games at once)"
 
-HEALTH = {  # an_activity_health.health_class -> (label, colour)
+HEALTH = {  # rpt_activity_health.health_class -> (label, colour)
     "growing": ("Growing", UP),
     "stable": ("Stable", FLAT),
     "declining": ("Declining", DOWN),
@@ -39,7 +39,7 @@ HEALTH = {  # an_activity_health.health_class -> (label, colour)
 }
 HEALTH_ORDER = ["Growing", "Stable", "Up-and-down", "Declining", "Too new to judge"]
 
-PATTERN = {  # an_game_lifecycle.lifecycle_pattern -> (label, colour)
+PATTERN = {  # rpt_game_lifecycle.lifecycle_pattern -> (label, colour)
     "growing": ("Keeps growing", UP),
     "sustained": ("Holds steady", FLAT),
     "gradual_decline": ("Slow fade", DOWN),
@@ -48,7 +48,7 @@ PATTERN = {  # an_game_lifecycle.lifecycle_pattern -> (label, colour)
 }
 PATTERN_ORDER = ["Keeps growing", "Holds steady", "Slow fade", "Big launch, fast drop", "Too new to tell"]
 
-OUTCOME = {  # an_sale_effect.sale_outcome -> (label, colour)
+OUTCOME = {  # rpt_discount_effect.sale_outcome -> (label, colour)
     "elevated_after": ("Stayed higher after the discount", UP),
     "returned_to_baseline": ("Went back to normal", FLAT),
     "below_baseline_after": ("Fell below normal", DOWN),
@@ -68,8 +68,13 @@ Monthly figures are the average of those readings over the month.
 
 **Launch peak** — the busiest month in the first four months after the game came out on Steam.
 
-**Typical level** — the game's usual player count around that time (median of the surrounding two months).
-Used so a huge game and a small one can share one chart.
+**Before-discount level** — the average daily players in the 14 days before a discount started. It is 100% on the
+discount charts, so a huge game and a small one can share one chart.
+
+**Previous 28 days** — the baseline for unusual days: the game's typical level over the 28 days before (on a log
+scale), with a normal range of ±3 standard deviations around it.
+
+**Days** — calendar days in UTC.
 
 **Steam discount** — a period when the game was cheaper than its normal price on the Steam store.
 
@@ -162,7 +167,7 @@ def coverage() -> pd.Series:
     return query("""
         with hours as (
             select distinct date_trunc('hour', recorded_at) as h
-            from fact_player_activity where data_resolution = 'hourly'
+            from marts.fact_player_activity where data_resolution = 'hourly'
         ),
         holes as (
             select lag(h) over (order by h) as gap_start, h as gap_end from hours
@@ -173,12 +178,12 @@ def coverage() -> pd.Series:
             order by gap_end - gap_start desc limit 1
         )
         select
-            (select min(activity_month) from fact_player_activity_monthly)                        as monthly_first,
-            (select max(activity_month) from fact_player_activity_monthly)                        as monthly_last,
-            (select min(recorded_at) from fact_player_activity where data_resolution = '5min')    as fine_first,
-            (select max(recorded_at) from fact_player_activity where data_resolution = '5min')    as fine_last,
-            (select min(recorded_at) from fact_player_activity where data_resolution = 'hourly')  as live_first,
-            (select max(recorded_at) from fact_player_activity where data_resolution = 'hourly')  as live_last,
+            (select min(activity_month) from marts.fact_player_activity_monthly)                  as monthly_first,
+            (select max(activity_month) from marts.fact_player_activity_monthly)                  as monthly_last,
+            (select min(recorded_at) from marts.fact_player_activity where data_resolution = '5min') as fine_first,
+            (select max(recorded_at) from marts.fact_player_activity where data_resolution = '5min') as fine_last,
+            (select min(recorded_at) from marts.fact_player_activity where data_resolution = 'hourly') as live_first,
+            (select max(recorded_at) from marts.fact_player_activity where data_resolution = 'hourly') as live_last,
             (select gap_start from biggest)                                                       as live_gap_start,
             (select gap_end from biggest)                                                         as live_gap_end
     """).iloc[0]
@@ -188,13 +193,13 @@ def pipeline_counts() -> pd.Series:
     """Headline pipeline-scale numbers (home page genre headline + 'How the data is built')."""
     return query("""
         select
-            (select count(*) from dim_game)                                          as games,
-            (select count(*) from dim_game where is_free)                            as free_games,
-            (select min(activity_month) from fact_player_activity_monthly)           as first_month,
-            (select count(*) from fact_player_activity)                              as readings,
-            (select count(*) from fact_price_snapshot)                               as price_changes,
-            (select count(distinct shop_id) from fact_price_snapshot)                as shops,
-            (select count(*) from fact_reviews)                                      as reviews
+            (select count(*) from marts.dim_game)                                    as games,
+            (select count(*) from marts.dim_game where is_free)                      as free_games,
+            (select min(activity_month) from marts.fact_player_activity_monthly)     as first_month,
+            (select count(*) from marts.fact_player_activity)                        as readings,
+            (select count(*) from marts.fact_price_snapshot)                         as price_changes,
+            (select count(distinct shop_id) from marts.fact_price_snapshot)          as shops,
+            (select count(*) from marts.fact_reviews)                                as reviews
     """).iloc[0]
 
 
@@ -208,7 +213,7 @@ def live_snapshot() -> pd.DataFrame:
     return query("""
         with hourly as (
             select steam_app_id, player_count, recorded_at
-            from fact_player_activity
+            from marts.fact_player_activity
             where data_resolution = 'hourly' and player_count is not null
         ),
         last_reading as (select max(recorded_at) as t from hourly),
@@ -223,13 +228,13 @@ def live_snapshot() -> pd.DataFrame:
         ),
         last_month as (
             select steam_app_id, activity_month as last_month, avg_players as last_month_avg
-            from fact_player_activity_monthly
-            where activity_month = (select max(activity_month) from fact_player_activity_monthly)
+            from marts.fact_player_activity_monthly
+            where activity_month = (select max(activity_month) from marts.fact_player_activity_monthly)
         )
         select g.steam_app_id, g.name, p.now_players, p.now_at, p.peak_24h, p.avg_7d,
                m.last_month, m.last_month_avg,
                p.avg_7d / nullif(m.last_month_avg, 0) - 1 as vs_last_month
-        from dim_game g
+        from marts.dim_game g
         join per_game p using (steam_app_id)
         left join last_month m using (steam_app_id)
         order by g.name
@@ -314,87 +319,30 @@ def game_image(url: str | None, width: int = 230) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Daily activity from the 5-minute backfill (21 games, Dec 2017 - Aug 2020),
-# indexed to the game's own typical level so games of any size share an axis.
+# Day-level charts (Q3 / Q4 detail) use UTC days from the reporting models; no day is derived here.
 # ---------------------------------------------------------------------------
-def daily_activity(steam_app_id: int) -> pd.DataFrame:
-    df = query(
-        """
-        with d as (
-            select cast(recorded_at as date) as day, avg(player_count) as players, count(*) as readings
-            from fact_player_activity
-            where steam_app_id = ? and data_resolution = '5min'
-            group by 1
+DAY_AXIS = "Date (UTC)"
+
+
+def utc(ts) -> pd.Timestamp:
+    return pd.Timestamp(ts).tz_convert("UTC")
+
+
+def sale_bands(sales: pd.DataFrame, x_dom: list) -> list[alt.Chart]:
+    """Steam discount periods as translucent bands (0 or 1 layer), clipped to the x domain."""
+    if sales.empty:
+        return []
+    s = sales.copy()
+    s["sale_start"] = pd.to_datetime(s["sale_start"])
+    s["sale_end_x"] = pd.to_datetime(s["sale_end"]) + pd.Timedelta(days=1)
+    s = s[(s["sale_end_x"] >= x_dom[0]) & (s["sale_start"] <= x_dom[1])]
+    s["legend"] = "Steam discount"
+    return [
+        alt.Chart(s).mark_rect(opacity=0.28).encode(
+            x=alt.X("sale_start:T", scale=alt.Scale(domain=x_dom)), x2="sale_end_x:T",
+            color=alt.Color("legend:N", title=None, scale=alt.Scale(domain=["Steam discount"], range=[SALE_WASH])),
+            tooltip=[alt.Tooltip("sale_start:T", title="Discount started", format="%d %b %Y"),
+                     alt.Tooltip("sale_end:T", title="Discount ended", format="%d %b %Y"),
+                     alt.Tooltip("max_discount_pct:Q", title="Discount %")],
         )
-        select day, players,
-               players / median(players) over (
-                   order by day rows between 30 preceding and 30 following) as vs_typical
-        from d
-        where readings >= 230   -- same >=80%-of-288 completeness rule the models use
-        order by day
-        """,
-        (steam_app_id,),
-    )
-    df["day"] = pd.to_datetime(df["day"])
-    # 7-day centred average removes the weekday/weekend rhythm so multi-day effects (sales) stand out
-    df["vs_typical_7d"] = df["vs_typical"].rolling(7, center=True, min_periods=4).mean()
-    return df
-
-
-def event_chart(daily: pd.DataFrame, sales: pd.DataFrame, anomalies: pd.DataFrame | None = None,
-                height: int = 300, smooth: bool = False):
-    """Player activity (as % of typical level) with Steam sale periods shaded behind it.
-    Optional anomaly markers: surges (up triangle), drops (down triangle), Steam-wide (grey).
-    smooth=True plots the 7-day average; keep it off when marking single days."""
-    ycol = "vs_typical_7d" if smooth else "vs_typical"
-    x_dom = [daily["day"].min(), daily["day"].max()]
-    # tickCount="month": the default half-month ticks printed every month label twice ("Jan 2020, Jan 2020, ...")
-    x = alt.X("day:T", title=None, scale=alt.Scale(domain=x_dom), axis=alt.Axis(format="%b %Y", tickCount="month"))
-
-    layers = []
-    if not sales.empty:
-        s = sales.copy()
-        s["sale_start"] = pd.to_datetime(s["sale_start"])
-        s["sale_end_x"] = pd.to_datetime(s["sale_end"]) + pd.Timedelta(days=1)
-        s = s[(s["sale_end_x"] >= x_dom[0]) & (s["sale_start"] <= x_dom[1])]
-        s["legend"] = "Steam discount"
-        layers.append(
-            alt.Chart(s).mark_rect(opacity=0.28).encode(
-                x=alt.X("sale_start:T", scale=alt.Scale(domain=x_dom)), x2="sale_end_x:T",
-                color=alt.Color("legend:N", title=None, scale=alt.Scale(domain=["Steam discount"], range=[SALE_WASH])),
-                tooltip=[alt.Tooltip("sale_start:T", title="Discount started", format="%d %b %Y"),
-                         alt.Tooltip("sale_end:T", title="Discount ended", format="%d %b %Y"),
-                         alt.Tooltip("max_discount_pct:Q", title="Discount %")],
-            )
-        )
-
-    layers.append(alt.Chart(pd.DataFrame({"y": [1.0]})).mark_rule(color=MUTED, strokeWidth=1).encode(y="y:Q"))
-    layers.append(
-        alt.Chart(daily).mark_line(color=FLAT, strokeWidth=1.6).encode(
-            x=x,
-            y=alt.Y(f"{ycol}:Q", title="Players vs. typical level", axis=alt.Axis(format="%")),
-            tooltip=[alt.Tooltip("day:T", title="Day", format="%a %d %b %Y"),
-                     alt.Tooltip(f"{ycol}:Q", title="vs. typical level" + (" (7-day average)" if smooth else ""),
-                                 format=".0%"),
-                     alt.Tooltip("players:Q", title="Players online (daily average)", format=",.0f")],
-        )
-    )
-
-    if anomalies is not None and not anomalies.empty:
-        a = anomalies.merge(daily[["day", "vs_typical", "players"]], left_on="activity_date", right_on="day")
-        a["kind"] = a.apply(lambda r: STEAM_WIDE if r["is_market_wide"]
-                            else ("Unusual surge" if r["direction"] == "spike" else "Unusual drop"), axis=1)
-        kinds = ["Unusual surge", "Unusual drop", STEAM_WIDE]
-        layers.append(
-            alt.Chart(a).mark_point(filled=True, size=110, opacity=1, stroke="white", strokeWidth=1.5).encode(
-                x="day:T", y="vs_typical:Q",
-                shape=alt.Shape("kind:N", title=None, scale=alt.Scale(domain=kinds, range=["triangle-up", "triangle-down", "circle"])),
-                fill=alt.Fill("kind:N", title=None, scale=alt.Scale(domain=kinds, range=[UP, DOWN, MUTED])),
-                tooltip=[alt.Tooltip("day:T", title="Day", format="%a %d %b %Y"),
-                         alt.Tooltip("kind:N", title="What happened"),
-                         alt.Tooltip("vs_typical:Q", title="vs. typical level", format=".0%"),
-                         alt.Tooltip("sale_discount_pct:Q", title="Discount % (if any)")],
-            )
-        )
-
-    return alt.layer(*layers).resolve_scale(color="independent").properties(height=height)
+    ]

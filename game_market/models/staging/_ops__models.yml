@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: stg_ops__ingestion_log
+    description: "One logged ingestion event (game x stage x script run), live from Neon. log_id is a per-row uuid, not a run id. component = the monitored pipeline component, null for manual/one-off stages."
+    columns:
+      - name: logged_at
+        data_tests:
+          - not_null
+      - name: component
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['hourly_player_counts', 'prices', 'app_details', 'reviews', 'steamcharts_monthly']
+
+  - name: stg_ops__pipeline_run_log
+    description: "One daily-flow run x stage, live from Neon."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [run_id, stage]
+    columns:
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['running', 'success', 'failed', 'skipped']
+
+  - name: stg_ops__dbt_node_result
+    description: "One dbt node x invocation of a daily-flow build, live from Neon."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [invocation_id, unique_id]
+    columns:
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['success', 'error', 'pass', 'fail', 'warn', 'skipped', 'no-op']

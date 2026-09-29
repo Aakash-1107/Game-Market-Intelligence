@@ -28,21 +28,34 @@ clean-targets:         # directories to be removed by `dbt clean`
 
 models:
   game_market:
+    # Layers: staging -> intermediate -> marts (gold) -> reporting; observability beside them.
+    # "May read" rules are in docs/DATA_MODEL.md.
+    # Schema names are used as-is (macros/generate_schema_name.sql): staging, intermediate, marts, reporting,
+    # observability, seeds.
     staging:
-      +materialized: view
+      +schema: staging
+      +materialized: view                 # current materialization kept (views over the S3 raw files)
       +docs: {node_color: "#3A7CA5"}    # blue
     intermediate:
+      +schema: intermediate
       +materialized: table
       +docs: {node_color: "#C9A227"}    # gold
     marts:
-      +materialized: table
+      +schema: marts
+      +materialized: table                # DuckDB has no materialized views; a table is the equivalent
       core:
-        +docs: {node_color: "#2E8B57"}  # green — facts & dims
-      analytics:
-        +docs: {node_color: "#B5446E"}  # raspberry — an_* question models
-      monitoring:
-        +docs: {node_color: "#6B7280"}  # grey — data observability (game_coverage)
+        +docs: {node_color: "#2E8B57"}  # green — general-purpose facts & dims (gold)
+    reporting:
+      +schema: reporting
+      +materialized: table                # rebuilt by every dbt build
+      +docs: {node_color: "#B5446E"}    # raspberry — rpt_* question models (Q1-Q4), read only gold
+    observability:
+      +schema: observability
+      +materialized: table
+      +tags: ["observability"]            # excluded in analytics-only builds (no Neon): --exclude tag:observability
+      +docs: {node_color: "#6B7280"}    # grey — data observability (game_coverage), may read any layer
 
 seeds:
   game_market:
+    +schema: seeds
     +docs: {node_color: "#7B5EA7"}      # purple — human-curated inputs

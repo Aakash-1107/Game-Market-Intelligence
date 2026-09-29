@@ -149,9 +149,9 @@ recovery as (
 
 release_context as (
     select
-        cast(steam_app_id as integer) as steam_app_id,
+        steam_app_id,
         steam_release_context
-    from {{ ref('seed_steam_release_context') }}
+    from {{ ref('dim_game') }}
 )
 
 select
@@ -202,7 +202,9 @@ select
         when su.m12_avg / nullif(l.launch_peak_avg, 0) < 0.60 then 'gradual_decline'
         when su.m12_avg / nullif(l.launch_peak_avg, 0) <= 1.00 then 'sustained'
         else 'growing'
-    end as lifecycle_pattern
+    end as lifecycle_pattern,
+
+    rc.lowest_after_launch_peak as lowest_after_launch_players   -- absolute value behind lowest_vs_launch_peak
 
 from game_status s
 left join pre_release pr on s.steam_app_id = pr.steam_app_id

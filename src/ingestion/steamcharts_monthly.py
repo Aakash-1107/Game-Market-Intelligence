@@ -19,12 +19,12 @@ from pathlib import Path
 
 import boto3
 import pandas as pd
-import psycopg2
 import requests
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
+from src.common.log_db import connect_log_db  # noqa: E402
 
 load_dotenv()
 
@@ -114,7 +114,7 @@ def run(requested: list[int] | None = None) -> dict:
         aws_secret_access_key=os.environ["AWS_SECRET_KEY"],
         region_name=os.environ["AWS_REGION"],
     )
-    conn = psycopg2.connect(os.environ[NEON_URL_ENV])
+    conn = connect_log_db(os.getenv(NEON_URL_ENV))
 
     run_at = datetime.now(timezone.utc)
     date_path = run_at.strftime("%Y/%m/%d")

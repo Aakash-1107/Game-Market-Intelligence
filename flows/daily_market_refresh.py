@@ -13,8 +13,14 @@ Tasks:
   3. in parallel, each with a retry of failed games and ingestion_log logging:
      ITAD prices, Steam app details, Steam reviews (+ lifetime summary), SteamCharts monthly
   4. freshness check: newest hourly player-count file in S3 is at most FRESHNESS_MAX_AGE_HOURS old
-  5. dbt build, only if 2-4 all succeeded; otherwise skipped and the flow run is marked failed
+  5. dbt build, only if 2-4 all succeeded; otherwise skipped and the flow run is marked failed.
+     Target dev (everything) when the log database is reachable, else target analytics without the observability
+     models (tag:observability); analytics never depends on Neon.
   6. run summary (counts per task, dbt PASS/WARN/ERROR) in the Prefect log
+
+Observability (src/observability/run_log.py): every stage writes a row to Neon pipeline_run_log (running, then
+success / failed / skipped, with counts and the error), and every dbt build (passed or failed) writes one row per
+node to dbt_node_result from target/run_results.json. Logging failures only warn; they never fail a task.
 
 A per-game task retries only its failed games, once, 5 minutes later (Steam's rate window); it fails if
 any game still fails or the script raises. Reruns are safe: raw S3 is append-only and staging keeps the
@@ -37,6 +43,7 @@ import boto3
 import duckdb
 from dotenv import load_dotenv
 from prefect import flow, get_run_logger, task
+from prefect.runtime import flow_run
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -49,6 +56,13 @@ load_dotenv(ROOT / ".env")
 from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
 from src.ingestion import itad_price_history, steam_app_details, steam_reviews, steamcharts_monthly  # noqa: E402
 from src.ingestion.resolve_ids import resolve_itad_ids  # noqa: E402
+from src.observability.run_log import log_skipped, log_stage, record_dbt_results  # noqa: E402
+
+FLOW_NAME = "daily_market_refresh"
+# future name in the flow -> stage name in pipeline_run_log
+STAGES = {"resolve_ids": "resolve_ids", "prices": "ingest_prices", "app_details": "ingest_app_details",
+          "reviews": "ingest_reviews", "steamcharts_monthly": "ingest_steamcharts", "freshness": "freshness_check",
+          "dbt_build": "dbt_build"}
 
 DBT_PROJECT_DIR = ROOT / "game_market"
 DUCKDB_PATH = Path(os.getenv("DUCKDB_PATH", str(ROOT / "data" / "game_market.duckdb")))
@@ -68,6 +82,10 @@ GAME_RETRY_DELAY_SECONDS = 300
 
 class TaskFailed(RuntimeError):
     pass
+
+
+def current_run_id() -> str:
+    return str(flow_run.id or "local")
 
 
 def run_with_game_retries(name: str, fetch, app_ids: list[int]) -> dict:
@@ -108,7 +126,18 @@ def load_active_games(app_ids: list[int] | None) -> list[int]:
 @task(name="resolve_ids", retries=RESOLVE_RETRIES, retry_delay_seconds=RESOLVE_RETRY_DELAY_SECONDS, log_prints=True)
 def resolve_ids(app_ids: list[int]) -> dict[int, str]:
     # games that fail to resolve are logged and skipped inside; only a crash fails the task
-    return resolve_itad_ids(app_ids)
+    with log_stage(current_run_id(), FLOW_NAME, "resolve_ids", records_in=len(app_ids)) as stage:
+        mappings = resolve_itad_ids(app_ids)
+        stage.records_out = len(mappings)
+        # No game resolved at all = ITAD itself is failing (invalid key, outage), not a per-game gap. Without this
+        # check, prices would "succeed" on zero games and dbt would build on stale prices (found 2026-09-29).
+        if app_ids and not mappings:
+            raise TaskFailed(f"resolve_ids: none of {len(app_ids)} game(s) resolved to an ITAD ID "
+                             "(check ITAD_API_KEY / ITAD availability)")
+        if len(mappings) < len(app_ids):
+            get_run_logger().warning(f"resolve_ids: {len(app_ids) - len(mappings)} game(s) not resolved; "
+                                     "their prices are not refreshed this run")
+    return mappings
 
 
 @task(name="refresh_prices", log_prints=True)
@@ -117,17 +146,26 @@ def refresh_prices(mappings: dict[int, str]) -> dict:
         result = itad_price_history.main(mappings={i: mappings[i] for i in ids})
         return {"success": len(result["succeeded"]), "records": result["records"],
                 "failed_ids": [app_id for app_id, _ in result["failed"]]}
-    return run_with_game_retries("prices", fetch, list(mappings))
+    with log_stage(current_run_id(), FLOW_NAME, "ingest_prices", records_in=len(mappings)) as stage:
+        counts = run_with_game_retries("prices", fetch, list(mappings))
+        stage.records_out = counts.get("success")
+    return counts
 
 
 @task(name="refresh_app_details", log_prints=True)
 def refresh_app_details(app_ids: list[int]) -> dict:
-    return run_with_game_retries("app_details", steam_app_details.main, app_ids)
+    with log_stage(current_run_id(), FLOW_NAME, "ingest_app_details", records_in=len(app_ids)) as stage:
+        counts = run_with_game_retries("app_details", steam_app_details.main, app_ids)
+        stage.records_out = counts.get("success")
+    return counts
 
 
 @task(name="refresh_reviews", log_prints=True)
 def refresh_reviews(app_ids: list[int]) -> dict:
-    return run_with_game_retries("reviews", steam_reviews.main, app_ids)
+    with log_stage(current_run_id(), FLOW_NAME, "ingest_reviews", records_in=len(app_ids)) as stage:
+        counts = run_with_game_retries("reviews", steam_reviews.main, app_ids)
+        stage.records_out = counts.get("success")
+    return counts
 
 
 @task(name="refresh_steamcharts_monthly", log_prints=True)
@@ -137,11 +175,21 @@ def refresh_steamcharts_monthly(app_ids: list[int]) -> dict:
         if counts["stopped"]:   # bot protection: retrying would only make it worse
             raise TaskFailed(f"steamcharts: stopped by bot protection: {counts['stopped']}")
         return counts
-    return run_with_game_retries("steamcharts", fetch, app_ids)
+    with log_stage(current_run_id(), FLOW_NAME, "ingest_steamcharts", records_in=len(app_ids)) as stage:
+        counts = run_with_game_retries("steamcharts", fetch, app_ids)
+        stage.records_out = counts.get("success")
+    return counts
 
 
 @task(name="check_hourly_freshness")
 def check_hourly_freshness() -> dict:
+    with log_stage(current_run_id(), FLOW_NAME, "freshness_check", records_in=1) as stage:
+        result = _check_hourly_freshness()
+        stage.records_out = 1
+    return result
+
+
+def _check_hourly_freshness() -> dict:
     s3 = boto3.client(
         "s3",
         region_name=os.environ["AWS_REGION"],
@@ -167,6 +215,30 @@ def check_hourly_freshness() -> dict:
 
 @task(name="dbt_build")
 def dbt_build() -> dict:
+    with log_stage(current_run_id(), FLOW_NAME, "dbt_build") as stage:
+        summary = _dbt_build()
+        stage.records_in = sum(summary.values()) or None      # nodes run (pass + warn + error + skip)
+        stage.records_out = summary.get("pass", 0) + summary.get("warn", 0)
+    return summary
+
+
+def dbt_mode_args() -> list[str]:
+    """Full build (target dev, with the observability models) when the log database is reachable; otherwise the
+    analytics-only build (target analytics, no Neon attach, observability models excluded)."""
+    url = os.getenv("DATABASE_URL")
+    reason = "DATABASE_URL is not set"
+    if url:
+        try:
+            import psycopg2
+            psycopg2.connect(url, connect_timeout=10).close()
+            return ["--target", "dev"]
+        except Exception as e:  # noqa: BLE001
+            reason = f"log database unreachable ({type(e).__name__})"
+    get_run_logger().warning(f"dbt: {reason}; building target analytics without the observability models")
+    return ["--target", "analytics", "--exclude", "tag:observability"]
+
+
+def _dbt_build() -> dict:
     logger = get_run_logger()
     try:   # fail fast with a clear message instead of a dbt stack trace
         duckdb.connect(str(DUCKDB_PATH)).close()
@@ -177,12 +249,17 @@ def dbt_build() -> dict:
         ) from e
 
     dbt = Path(sys.executable).parent / ("dbt.exe" if os.name == "nt" else "dbt")
+    started = datetime.now(timezone.utc)
     proc = subprocess.run(
-        [str(dbt), "build", "--no-use-colors", "--threads", DBT_THREADS],
+        [str(dbt), "build", "--no-use-colors", "--threads", DBT_THREADS, "--profiles-dir", str(DBT_PROJECT_DIR),
+         *dbt_mode_args()],
         cwd=DBT_PROJECT_DIR, env=os.environ.copy(), capture_output=True, text=True, encoding="utf-8",
         errors="replace",
     )
     output = proc.stdout + proc.stderr
+    # passed or failed: one row per node in dbt_node_result (skipped if dbt wrote no new run_results.json)
+    written = record_dbt_results(current_run_id(), DBT_PROJECT_DIR / "target" / "run_results.json", not_before=started)
+    logger.info(f"observability: {written} dbt node result(s) recorded")
     for line in output.splitlines():
         if re.search(r"\b(ERROR|FAIL|WARN)\b", line) and "START" not in line:
             logger.info(line)
@@ -213,16 +290,24 @@ def daily_market_refresh(app_ids: list[int] | None = None) -> dict:
     }
 
     results, failed = {}, []
+    run_id = current_run_id()
     for name, fut in futures.items():
-        value = fut.result(raise_on_failure=False)
+        try:
+            value = fut.result(raise_on_failure=False)
+        except Exception as e:   # a task that never ran (upstream failed) has no result: UnfinishedRun
+            value = e
         if fut.state.is_completed():
             results[name] = {"matched": len(value)} if name == "resolve_ids" else value
         else:
             failed.append(name)
             results[name] = f"FAILED: {value}"
+            if not fut.state.is_failed():   # never ran (an upstream task failed): the task could not log itself
+                upstream = ", ".join(STAGES[n] for n in failed if n != name) or fut.state.name
+                log_skipped(run_id, FLOW_NAME, STAGES[name], f"not run: upstream failed ({upstream})")
 
     if failed:
         results["dbt_build"] = f"SKIPPED: upstream failed ({', '.join(failed)})"
+        log_skipped(run_id, FLOW_NAME, "dbt_build", f"upstream failed: {', '.join(STAGES[n] for n in failed)}")
     else:
         dbt_future = dbt_build.submit()
         value = dbt_future.result(raise_on_failure=False)

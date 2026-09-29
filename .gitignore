@@ -89,3 +89,6 @@ exploration/
 *backup*
 *.bak
 *.orig
+
+# dbt writes an anonymous user id next to the profile (game_market/profiles.yml)
+game_market/.user.yml

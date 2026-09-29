@@ -16,9 +16,9 @@ page_header(
 
 games = query("""
     select g.*, l.lifecycle_pattern, h.health_class
-    from dim_game g
-    left join an_game_lifecycle l using (steam_app_id)
-    left join an_activity_health h using (steam_app_id)
+    from marts.dim_game g
+    left join reporting.rpt_game_lifecycle l using (steam_app_id)
+    left join reporting.rpt_activity_health h using (steam_app_id)
     order by g.name
 """)
 names = games["name"].tolist()
@@ -61,26 +61,34 @@ live = snap[snap["steam_app_id"] == app_id]
 live = live.iloc[0] if not live.empty else None
 k = query("""
     select
-      (select max(avg_players) from fact_player_activity_monthly where steam_app_id = $1) as best_month,
-      (select avg(voted_up::int) from fact_reviews where steam_app_id = $1) as positive,
-      (select count(*) from fact_reviews where steam_app_id = $1) as n_reviews
+      (select max(avg_players) from marts.fact_player_activity_monthly where steam_app_id = $1) as best_month,
+      (select arg_max(activity_month, avg_players) from marts.fact_player_activity_monthly where steam_app_id = $1) as best_month_at,
+      (select arg_max(avg_players, activity_month) from marts.fact_player_activity_monthly where steam_app_id = $1) as latest_month,
+      (select max(activity_month) from marts.fact_player_activity_monthly where steam_app_id = $1) as latest_month_at,
+      (select avg(voted_up::int) from marts.fact_reviews where steam_app_id = $1) as positive,
+      (select count(*) from marts.fact_reviews where steam_app_id = $1) as n_reviews
 """, (app_id,)).iloc[0]
 m1, m2, m3 = st.columns(3)
 if live is not None:
     vs = live.vs_last_month
     m1.metric("Players online now", f"{live.now_players:,.0f}",
               f"{pct(vs, signed=True)} this week vs. {live.last_month:%b %Y}" if pd.notna(vs) else None,
-              help=f"Latest hourly reading ({local(live.now_at):%d %b %Y, %H:%M}). The change compares the average "
-                   f"of the last 7 days ({live.avg_7d:,.0f}) with the last complete month's average.", border=True, height="stretch")
+              help=f"Latest hourly reading ({local(live.now_at):%d %b %Y, %H:%M}, Berlin time). The change compares the "
+                   f"average of the last 7 days ({live.avg_7d:,.0f}) with the {live.last_month:%B %Y} monthly average "
+                   f"({live.last_month_avg:,.0f} = 100%).", border=True, height="stretch")
 else:
     m1.metric("Players online now", "—", help="No live readings for this game.", border=True, height="stretch")
 m2.metric("Busiest month ever", f"{k.best_month:,.0f}" if pd.notna(k.best_month) else "—",
-          help="Highest monthly average of players online at the same time.", border=True, height="stretch")
+          f"{pd.Timestamp(k.latest_month_at):%b %Y}: {k.latest_month / k.best_month:.0%} of it" if pd.notna(k.best_month) else None,
+          delta_color="off",
+          help=(f"Highest monthly average of players online at the same time: {pd.Timestamp(k.best_month_at):%B %Y}, "
+                f"{k.best_month:,.0f} players (= 100%). {pd.Timestamp(k.latest_month_at):%B %Y}: {k.latest_month:,.0f}."
+                if pd.notna(k.best_month) else "No monthly history."), border=True, height="stretch")
 m3.metric("Positive reviews", f"{k.positive:.0%}" if k.n_reviews else "—",
           help=f"Share of the {k.n_reviews:,} most recent Steam reviews that recommend the game.", border=True, height="stretch")
 
 # ---- Players over time --------------------------------------------------------------------------
-monthly = query("""select activity_month, avg_players from fact_player_activity_monthly
+monthly = query("""select activity_month, avg_players from marts.fact_player_activity_monthly
                    where steam_app_id = ? order by activity_month""", (app_id,))
 if monthly.empty:
     st.info(f"No monthly player history yet for {game} — it's too new. Only the last few weeks of hourly data exist.")
@@ -102,10 +110,9 @@ else:
     if pd.notna(g.release_date) and pd.Timestamp(g.release_date) >= monthly["activity_month"].min():
         rel = pd.DataFrame({"d": [pd.Timestamp(g.release_date)]})
         layers.insert(0, alt.Chart(rel).mark_rule(color=MUTED).encode(x="d:T"))
-    share_now = latest.avg_players / peak.avg_players
     chart_block(
         f"{game} was busiest in {peak.activity_month:%B %Y} with about {peak.avg_players:,.0f} players online at once; "
-        f"in {latest.activity_month:%B %Y} it had {share_now:.0%} of that",
+        f"in {latest.activity_month:%B %Y} it had about {latest.avg_players:,.0f}",
         "The line shows how many people were playing at the same moment, averaged over each month. "
         "The black dot marks the busiest month; the thin grey vertical line is when the game came out on Steam.",
         alt.layer(*layers).properties(height=300),
@@ -114,7 +121,7 @@ else:
     )
 
 # ---- Live hourly feed ---------------------------------------------------------------------------
-hourly = query("""select recorded_at, player_count from fact_player_activity
+hourly = query("""select recorded_at, player_count from marts.fact_player_activity
                   where steam_app_id = ? and data_resolution = 'hourly' and player_count is not null
                   order by recorded_at""", (app_id,))
 if len(hourly) >= 24:
@@ -151,7 +158,7 @@ if len(hourly) >= 24:
 
 # ---- Price history on Steam ---------------------------------------------------------------------
 price = query("""select observed_at, price_amount, regular_amount, discount_pct, is_on_sale
-                 from fact_price_snapshot where steam_app_id = ? and shop_id = 61 order by observed_at""", (app_id,))
+                 from marts.fact_price_snapshot where steam_app_id = ? and shop_id = 61 order by observed_at""", (app_id,))
 if len(price) < 3:
     st.info(f"No Steam price history for {game}" + (" — it's free-to-play." if g.is_free else "."))
 else:
@@ -184,7 +191,7 @@ rev = query("""
                 when playtime_at_review_minutes < 12000 then '50–200 hours'
                 else '200+ hours' end as played,
            count(*) as reviews, avg(voted_up::int) as positive
-    from fact_reviews where steam_app_id = ? group by 1
+    from marts.fact_reviews where steam_app_id = ? group by 1
 """, (app_id,))
 BUCKETS = ["Under 2 hours", "2–10 hours", "10–50 hours", "50–200 hours", "200+ hours"]
 rev = rev[rev["reviews"] >= 20]

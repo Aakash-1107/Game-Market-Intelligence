@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 
--- Q3 Sale effect. Grain: one row per sale episode (from int_sale_episodes).
+-- Q3 Sale effect. Grain: one row per sale episode (from fact_discount_episode).
 -- Activity: complete days of the 5-minute backfill only (Dec 2017 - Aug 2020).
 -- Observational: lifts are associations, not causal effects.
 
@@ -15,7 +15,7 @@ with episodes as (
         avg_discount_pct,
         prev_sale_end,
         next_sale_start
-    from {{ ref('int_sale_episodes') }}
+    from {{ ref('fact_discount_episode') }}
 ),
 
 daily as (
@@ -23,7 +23,7 @@ daily as (
         steam_app_id,
         activity_date,
         avg_players
-    from {{ ref('int_player_activity_daily') }}
+    from {{ ref('fact_player_activity_daily') }}
     where data_resolution = '5min'
       and is_complete_day
 ),

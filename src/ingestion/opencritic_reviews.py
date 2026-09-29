@@ -15,19 +15,19 @@ import json
 import time
 import boto3
 import requests
-import psycopg2
 from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.log_db import connect_log_db  # noqa: E402
 from src.common.tracked_games import (  # noqa: E402
     MATCHED_OVERRIDE_STATUSES, load_manual_overrides, load_tracked_app_ids,
 )
 
 load_dotenv()
 
-DATABASE_URL       = os.environ["DATABASE_URL"]
+DATABASE_URL       = os.getenv("DATABASE_URL")
 OPENCRITIC_API_KEY = os.environ["OPENCRITIC_API_KEY"]
 AWS_ACCESS_KEY     = os.environ["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY     = os.environ["AWS_SECRET_KEY"]
@@ -122,7 +122,7 @@ def main():
     run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
     print(f"OpenCritic review ingestion started — {run_timestamp}")
 
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = connect_log_db(DATABASE_URL)
     s3_client = boto3.client(
         "s3",
         region_name=AWS_REGION,

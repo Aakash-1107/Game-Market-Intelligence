@@ -22,12 +22,12 @@ with app_details as (
 
 ),
 
--- tracked_games seed is the authoritative game list
+-- scope: tracked_games seed that also has Steam appdetails, defined once in int_tracked_games
 tracked as (
 
     select
-        cast(steam_app_id as integer)           as steam_app_id
-    from {{ ref('tracked_games') }}
+        steam_app_id
+    from {{ ref('int_tracked_games') }}
 
 ),
 
@@ -56,6 +56,17 @@ reviews_summary as (
         partition by steam_app_id
         order by fetched_at desc
     ) = 1
+
+),
+
+-- games whose Steam release is not their original launch (human-curated); all other games: null
+release_context as (
+
+    select
+        cast(steam_app_id as integer)               as steam_app_id,
+        steam_release_context,
+        context_note
+    from {{ ref('seed_steam_release_context') }}
 
 ),
 
@@ -95,7 +106,10 @@ final as (
         r.total_reviews                             as review_total_count,
         r.review_score,
         r.review_score_desc,
-        r.positivity_pct                            as review_positivity_pct
+        r.positivity_pct                            as review_positivity_pct,
+
+        ctx.steam_release_context,
+        ctx.context_note                            as steam_release_context_note
 
     from app_details d
     inner join tracked t
@@ -104,6 +118,8 @@ final as (
         on d.steam_app_id = a.steam_app_id
     left join reviews_summary r
         on d.steam_app_id = r.steam_app_id
+    left join release_context ctx
+        on d.steam_app_id = ctx.steam_app_id
 
 )
 

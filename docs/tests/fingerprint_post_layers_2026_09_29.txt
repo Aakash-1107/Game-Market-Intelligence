@@ -1,0 +1,36 @@
+dim_game                                     55  500718213691069657690
+fact_critic_review                          184  1629994209150333652234
+fact_player_activity                  8,063,598  74384448443300676409438311  (cut recorded_at)
+fact_player_activity_monthly              4,939  44997491295281865746584
+fact_price_snapshot                      55,375  511293592222562667153024
+fact_reviews                             82,993  764385791270352173266280
+game_coverage                                55  518052906663587273832
+int_player_activity_daily                29,014  268995325870209976694222  (cut activity_date)
+int_player_activity_monthly__merged        4,939  45361325304484874439337
+int_price_daily                         149,679  1379100565499738826232050  (cut price_date)
+int_sale_episodes                         2,072  19176488143020506476072
+int_tracked_games                            55  498458147813083847628
+manual_id_overrides                          15  129923010756767269207
+mart_activity_health                         55  584924426777795320033
+mart_discount_effect                      2,068  19054536992097035775736  (cut sale_end)
+mart_game_lifecycle                          55  480637163808372767638
+mart_market_anomalies                    28,010  259688314960785426477272  (cut activity_date)
+seed_steam_release_context                    7  61299441023659274976
+stg_itad__price_history                  56,621  520345128483310617466310
+stg_kaggle__steamcharts_monthly         612,265  5650715793170200732126956
+stg_opencritic__reviews                     184  1705015406175171243575
+stg_source_id_mapping                        70  623784101125695627258
+stg_steam__app_details                       55  581800639880076024407
+stg_steam__app_list                     184,973  1709048509343582910138907
+stg_steam__player_counts              8,342,249  76943204569579429577168615  (cut recorded_at)
+stg_steam__reviews                       83,667  770324751317983574900590
+stg_steam__reviews_summary                   56  555237878552596071559
+stg_steamcharts__monthly                  4,939  45070241940503231927449
+tracked_games                                55  548096148568813339609
+
+Diff vs docs/tests/fingerprint_pre_layers_2026_09_29.json
+  int_game_first_observed            55 -> None
+  int_player_activity_monthly__merged None -> 4939
+  int_tracked_games                  None -> 55
+  source_id_mappings                 53 -> None
+4 relation(s) differ

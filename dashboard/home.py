@@ -13,5 +13,6 @@ pages = [
     st.Page("views/4_Market_Events.py", title="Unusual days", icon=":material/bolt:"),
     st.Page("views/5_Game_Explorer.py", title="Game explorer", icon=":material/search:"),
     st.Page("views/6_Data.py", title="How the data is built", icon=":material/database:"),
+    st.Page("views/7_Pipeline_Health.py", title="Pipeline health", icon=":material/health_and_safety:"),
 ]
 st.navigation(pages).run()

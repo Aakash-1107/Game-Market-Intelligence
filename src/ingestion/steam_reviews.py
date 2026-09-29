@@ -22,11 +22,11 @@ from pathlib import Path
 
 import requests
 import boto3
-import psycopg2
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
+from src.common.log_db import connect_log_db  # noqa: E402
 
 load_dotenv()
 
@@ -35,7 +35,7 @@ AWS_ACCESS_KEY = os.environ["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY = os.environ["AWS_SECRET_KEY"]
 AWS_REGION = os.environ["AWS_REGION"]
 AWS_BUCKET = os.environ["AWS_BUCKET"]
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 MAX_REVIEWS_PER_GAME = 1000
 REVIEWS_PER_PAGE = 100
@@ -62,7 +62,7 @@ def get_s3_client():
 
 
 def get_pg_connection():
-    return psycopg2.connect(DATABASE_URL)
+    return connect_log_db(DATABASE_URL)
 
 
 def retry_after_seconds(response: requests.Response) -> float:

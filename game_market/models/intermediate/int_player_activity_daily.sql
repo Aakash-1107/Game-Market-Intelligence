@@ -1,15 +1,19 @@
 {{ config(materialized='table') }}
 
+-- Reads staging directly (not fact_player_activity); tracked games only, as in the fact.
+
 with observations as (
 
     select
-        steam_app_id,
-        recorded_at,
-        player_count,
-        data_resolution,
-        cast(recorded_at at time zone 'UTC' as date) as activity_date
-    from {{ ref('fact_player_activity') }}
-    where player_count is not null
+        p.steam_app_id,
+        p.recorded_at,
+        p.player_count,
+        p.data_resolution,
+        cast(p.recorded_at at time zone 'UTC' as date) as activity_date
+    from {{ ref('stg_steam__player_counts') }} p
+    inner join {{ ref('int_tracked_games') }} t
+        on p.steam_app_id = t.steam_app_id
+    where p.player_count is not null
 
 ),
 

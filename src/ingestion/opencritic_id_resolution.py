@@ -40,7 +40,7 @@ def get_unresolved_games(pg_conn) -> list[tuple[int, str]]:
     """
     Returns games that have a Steam mapping in Neon
     but no OpenCritic mapping yet.
-    Names come from DuckDB dim_game.
+    Names come from DuckDB marts.dim_game.
     Already-resolved filtering done against Neon game_source_mapping.
     """
     # Step 1 — get already-resolved steam_app_ids from Neon
@@ -54,7 +54,7 @@ def get_unresolved_games(pg_conn) -> list[tuple[int, str]]:
     duck = duckdb.connect(DUCKDB_PATH, read_only=True)
     try:
         rows = duck.execute("""
-            SELECT steam_app_id, name FROM dim_game ORDER BY steam_app_id
+            SELECT steam_app_id, name FROM marts.dim_game ORDER BY steam_app_id
         """).fetchall()
     finally:
         duck.close()
