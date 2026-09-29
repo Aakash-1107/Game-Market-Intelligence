@@ -1,13 +1,29 @@
 # src/ingestion/opencritic_reviews.py
+"""OpenCritic critic reviews for the active tracked games that have an OpenCritic ID.
 
+OpenCritic is manual-only (RapidAPI quota: 25 searches/day), so it is not part of any scheduled flow.
+The game list is the rows in game_market/seeds/manual_id_overrides.csv with source = opencritic and
+a matched status (matched_manual / matched_imported), restricted to active games in tracked_games.csv. A new game gets OpenCritic
+data only after someone adds its override row. Neon game_source_mapping is no longer read.
+
+Run from project root:
+    python src/ingestion/opencritic_reviews.py
+"""
 import os
+import sys
 import json
 import time
 import boto3
 import requests
 import psycopg2
 from datetime import datetime, timezone
+from pathlib import Path
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.common.tracked_games import (  # noqa: E402
+    MATCHED_OVERRIDE_STATUSES, load_manual_overrides, load_tracked_app_ids,
+)
 
 load_dotenv()
 
@@ -23,16 +39,15 @@ RAPIDAPI_HOST = "opencritic-api.p.rapidapi.com"
 SLEEP_SECONDS = 1.0
 
 
-def get_mapped_games(conn) -> list[tuple[int, str]]:
-    """Return (steam_app_id, opencritic_game_id) for all OpenCritic-mapped games."""
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT steam_app_id, source_game_id
-            FROM game_source_mapping
-            WHERE source = 'OpenCritic'
-            ORDER BY steam_app_id
-        """)
-        return cur.fetchall()
+def get_mapped_games() -> list[tuple[int, str]]:
+    """Return (steam_app_id, opencritic_game_id) for active games with a matched OpenCritic override."""
+    active = set(load_tracked_app_ids())
+    overrides = load_manual_overrides("opencritic")
+    return sorted(
+        (app_id, o["source_game_id"])
+        for app_id, o in overrides.items()
+        if app_id in active and o["status"] in MATCHED_OVERRIDE_STATUSES
+    )
 
 
 def fetch_reviews(opencritic_id: str) -> tuple[list | None, int | None, str | None]:
@@ -115,7 +130,7 @@ def main():
         aws_secret_access_key=AWS_SECRET_KEY,
     )
 
-    games = get_mapped_games(conn)
+    games = get_mapped_games()
     print(f"{len(games)} games mapped to OpenCritic — fetching reviews")
 
     succeeded = []

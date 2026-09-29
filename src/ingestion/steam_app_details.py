@@ -1,4 +1,10 @@
 # src/ingestion/steam_app_details.py
+"""Steam appdetails for the active tracked games, one raw JSON per game per run in S3; logs to ingestion_log.
+
+Run from project root:
+    python src/ingestion/steam_app_details.py                 # all active games
+    python src/ingestion/steam_app_details.py 105600 413150   # only these (must be active)
+"""
 
 import os
 import sys
@@ -107,7 +113,8 @@ def log_ingestion(conn, steam_app_id: int, status: str,
     conn.commit()
 
 
-def main():
+def main(requested: list[int] | None = None) -> dict:
+    """Fetch appdetails for all active games, or only `requested`. Returns counts per outcome."""
     run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
     print(f"Steam appdetails ingestion started — {run_timestamp}")
 
@@ -120,7 +127,12 @@ def main():
     )
 
     app_ids = load_tracked_app_ids()
-    print(f"Loaded {len(app_ids)} Steam App IDs from tracked_games.csv")
+    if requested:
+        untracked = set(requested) - set(app_ids)
+        if untracked:
+            raise ValueError(f"Not active in tracked_games.csv: {sorted(untracked)}")
+        app_ids = requested
+    print(f"{len(app_ids)} Steam App IDs to fetch (active rows of tracked_games.csv)")
 
     succeeded = []
     failed    = []
@@ -170,6 +182,9 @@ def main():
 
     conn.close()
 
+    return {"success": len(succeeded), "skipped": len(skipped), "failed": len(failed),
+            "failed_ids": [app_id for app_id, _ in failed]}
+
 
 if __name__ == "__main__":
-    main()
+    main([int(a) for a in sys.argv[1:]] or None)

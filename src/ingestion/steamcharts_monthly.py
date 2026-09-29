@@ -3,6 +3,11 @@
 For every game in game_market/seeds/tracked_games.csv: fetch https://steamcharts.com/app/{app_id}, store the raw
 HTML and the extracted monthly table (values kept as text) in S3, and log one row per
 game to ingestion_log (Neon). Numeric parsing happens in dbt staging.
+
+Run from project root:
+    python src/ingestion/steamcharts_monthly.py                 # all active games
+    python src/ingestion/steamcharts_monthly.py 105600 413150   # only these (must be active)
+Exit code: 0 ok, 1 some games failed, 2 stopped by bot protection.
 """
 import io
 import os
@@ -99,7 +104,9 @@ def log_row(conn, app_id: int, status: str, http_status: int | None,
     conn.commit()
 
 
-def main() -> int:
+def run(requested: list[int] | None = None) -> dict:
+    """Scrape all active games, or only `requested`. Returns counts; counts["stopped"] is set if bot
+    protection stopped the run."""
     bucket = os.environ["AWS_BUCKET"]
     s3 = boto3.client(
         "s3",
@@ -116,10 +123,15 @@ def main() -> int:
     session = requests.Session()
     session.headers.update(HEADERS)
 
-    counts = {"success": 0, "not_found": 0, "failed": 0}
+    counts = {"success": 0, "not_found": 0, "failed": 0, "failed_ids": [], "stopped": None}
     try:
         check_robots(session)
         app_ids = load_tracked_app_ids()
+        if requested:
+            untracked = set(requested) - set(app_ids)
+            if untracked:
+                raise ValueError(f"Not active in tracked_games.csv: {sorted(untracked)}")
+            app_ids = requested
         print(f"{len(app_ids)} games to fetch")
 
         for app_id in app_ids:
@@ -152,18 +164,26 @@ def main() -> int:
                 log_row(conn, app_id, "failed", getattr(locals().get("r"), "status_code", None),
                         None, f"{type(exc).__name__}: {exc}"[:1000])
                 counts["failed"] += 1
+                counts["failed_ids"].append(app_id)
                 print(f"[{app_id}] FAILED: {exc}")
             finally:
                 time.sleep(SLEEP_SECONDS)
     except BotChallengeError as exc:
         print(f"STOPPED: {exc}")
-        return 2
+        counts["stopped"] = str(exc)
     finally:
         conn.close()
 
     print(f"Done: {counts}")
+    return counts
+
+
+def main(requested: list[int] | None = None) -> int:
+    counts = run(requested)
+    if counts["stopped"]:
+        return 2
     return 0 if counts["failed"] == 0 else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main([int(a) for a in sys.argv[1:]] or None))

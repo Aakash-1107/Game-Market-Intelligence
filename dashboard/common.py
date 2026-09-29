@@ -49,10 +49,10 @@ PATTERN = {  # an_game_lifecycle.lifecycle_pattern -> (label, colour)
 PATTERN_ORDER = ["Keeps growing", "Holds steady", "Slow fade", "Big launch, fast drop", "Too new to tell"]
 
 OUTCOME = {  # an_sale_effect.sale_outcome -> (label, colour)
-    "elevated_after": ("Stayed higher after the sale", UP),
+    "elevated_after": ("Stayed higher after the discount", UP),
     "returned_to_baseline": ("Went back to normal", FLAT),
     "below_baseline_after": ("Fell below normal", DOWN),
-    "no_lift": ("No bump during the sale", NO_DATA),
+    "no_lift": ("No bump during the discount", NO_DATA),
 }
 OUTCOME_ORDER = [v[0] for v in OUTCOME.values()]
 
@@ -71,7 +71,7 @@ Monthly figures are the average of those readings over the month.
 **Typical level** — the game's usual player count around that time (median of the surrounding two months).
 Used so a huge game and a small one can share one chart.
 
-**Steam sale** — a period when the game was discounted on the Steam store.
+**Steam discount** — a period when the game was cheaper than its normal price on the Steam store.
 
 **Unusual day** — a day far outside the game's normal range over the previous four weeks
 (by pure chance you'd expect a day like that only about once a year).
@@ -79,7 +79,7 @@ Used so a huge game and a small one can share one chart.
 **Early Access** — a game sold while still unfinished. Its "1.0 release" is the official finished version,
 which Steam sometimes records as the release date.
 
-**Free-to-play** — no purchase price, so no sales. The game earns money in other ways (in-game purchases).
+**Free-to-play** — no purchase price, so no discounts. The game earns money in other ways (in-game purchases).
 
 **DLC** — paid add-on content for a game that's already out.
 """
@@ -357,13 +357,13 @@ def event_chart(daily: pd.DataFrame, sales: pd.DataFrame, anomalies: pd.DataFram
         s["sale_start"] = pd.to_datetime(s["sale_start"])
         s["sale_end_x"] = pd.to_datetime(s["sale_end"]) + pd.Timedelta(days=1)
         s = s[(s["sale_end_x"] >= x_dom[0]) & (s["sale_start"] <= x_dom[1])]
-        s["legend"] = "Steam sale"
+        s["legend"] = "Steam discount"
         layers.append(
             alt.Chart(s).mark_rect(opacity=0.28).encode(
                 x=alt.X("sale_start:T", scale=alt.Scale(domain=x_dom)), x2="sale_end_x:T",
-                color=alt.Color("legend:N", title=None, scale=alt.Scale(domain=["Steam sale"], range=[SALE_WASH])),
-                tooltip=[alt.Tooltip("sale_start:T", title="Sale started", format="%d %b %Y"),
-                         alt.Tooltip("sale_end:T", title="Sale ended", format="%d %b %Y"),
+                color=alt.Color("legend:N", title=None, scale=alt.Scale(domain=["Steam discount"], range=[SALE_WASH])),
+                tooltip=[alt.Tooltip("sale_start:T", title="Discount started", format="%d %b %Y"),
+                         alt.Tooltip("sale_end:T", title="Discount ended", format="%d %b %Y"),
                          alt.Tooltip("max_discount_pct:Q", title="Discount %")],
             )
         )
@@ -393,7 +393,7 @@ def event_chart(daily: pd.DataFrame, sales: pd.DataFrame, anomalies: pd.DataFram
                 tooltip=[alt.Tooltip("day:T", title="Day", format="%a %d %b %Y"),
                          alt.Tooltip("kind:N", title="What happened"),
                          alt.Tooltip("vs_typical:Q", title="vs. typical level", format=".0%"),
-                         alt.Tooltip("sale_discount_pct:Q", title="Sale discount % (if any)")],
+                         alt.Tooltip("sale_discount_pct:Q", title="Discount % (if any)")],
             )
         )
 

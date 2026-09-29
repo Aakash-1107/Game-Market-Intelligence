@@ -1,4 +1,10 @@
 # src/ingestion/opencritic_id_resolution.py
+"""OBSOLETE since 2026-09-28: kept for reference, not part of any flow.
+
+One-off setup helper (2026-09-21) that searched OpenCritic by name and wrote matches to the Neon table
+game_source_mapping, which is itself obsolete. OpenCritic IDs are now added by hand as rows in
+game_market/seeds/manual_id_overrides.csv (source = opencritic), read by opencritic_reviews.py.
+"""
 
 import os
 import re
@@ -7,13 +13,14 @@ import requests
 import psycopg2
 import duckdb
 from datetime import datetime, timezone
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
 DATABASE_URL       = os.environ["DATABASE_URL"]
 OPENCRITIC_API_KEY = os.environ["OPENCRITIC_API_KEY"]
-DUCKDB_PATH        = r"C:\Users\isabe\Desktop\Weiterbildung\Capstone Project\data\game_market.duckdb"
+DUCKDB_PATH        = os.getenv("DUCKDB_PATH", str(Path(__file__).resolve().parents[2] / "data" / "game_market.duckdb"))
 
 SEARCH_URL         = "https://opencritic-api.p.rapidapi.com/game/search"
 RAPIDAPI_HOST      = "opencritic-api.p.rapidapi.com"

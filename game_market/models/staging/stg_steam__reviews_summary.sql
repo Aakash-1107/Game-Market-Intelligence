@@ -25,4 +25,9 @@ final as (
 
 )
 
+-- Grain: one row per game, latest fetch wins (raw is one file per game per run).
 select * from final
+qualify row_number() over (
+    partition by steam_app_id
+    order by fetched_at desc
+) = 1

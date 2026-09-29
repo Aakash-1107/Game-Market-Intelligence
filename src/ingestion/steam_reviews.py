@@ -1,6 +1,9 @@
 """
 Fetches Steam reviews for all tracked games and writes raw JSON to S3.
-Collects up to 1,000 reviews per game (10 pages x 100) in English.
+Collects the newest 1,000 reviews per game (10 pages x 100) in English.
+filter=recent (sorted by creation time) is required for stable cursor pagination; the default
+filter=all sorts by helpfulness, returns a different sample every call and repeats reviews across
+pages. Fetches before 2026-09-28 used the default.
 Logs each game to ingestion_log on Neon.
 
 Run from project root:
@@ -14,6 +17,7 @@ import sys
 import time
 import logging
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import requests
@@ -36,6 +40,10 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 MAX_REVIEWS_PER_GAME = 1000
 REVIEWS_PER_PAGE = 100
 SLEEP_BETWEEN_GAMES = 1.5
+# Steam's store endpoints allow roughly 200 requests per 5 minutes; 1.5 s per page stays under it.
+SLEEP_BETWEEN_PAGES = 1.5
+MAX_429_RETRIES = 5            # per page
+DEFAULT_429_WAIT_SECONDS = 60  # when Steam sends no Retry-After header
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +65,33 @@ def get_pg_connection():
     return psycopg2.connect(DATABASE_URL)
 
 
+def retry_after_seconds(response: requests.Response) -> float:
+    """Seconds to wait after a 429: the Retry-After header (seconds or HTTP date), else the default."""
+    value = response.headers.get("Retry-After")
+    if value:
+        if value.strip().isdigit():
+            return float(value)
+        try:
+            return max(0.0, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_429_WAIT_SECONDS
+
+
+def get_page(url: str, params: dict, app_id: int) -> requests.Response:
+    """GET one review page; on 429 wait (Retry-After, else 60 s) and retry, up to MAX_429_RETRIES times."""
+    for attempt in range(MAX_429_RETRIES + 1):
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code != 429 or attempt == MAX_429_RETRIES:
+            break
+        wait = retry_after_seconds(response)
+        log.warning(f"  [{app_id}] 429 Too Many Requests, waiting {wait:.0f} s "
+                    f"(retry {attempt + 1}/{MAX_429_RETRIES})")
+        time.sleep(wait)
+    response.raise_for_status()
+    return response
+
+
 def fetch_reviews_for_game(app_id: int) -> tuple[list[dict], dict]:
     """
     Fetch up to MAX_REVIEWS_PER_GAME reviews for one game.
@@ -70,6 +105,7 @@ def fetch_reviews_for_game(app_id: int) -> tuple[list[dict], dict]:
     while len(all_reviews) < MAX_REVIEWS_PER_GAME:
         params = {
             "json": 1,
+            "filter": "recent",
             "language": "english",
             "review_type": "all",
             "purchase_type": "all",
@@ -77,8 +113,7 @@ def fetch_reviews_for_game(app_id: int) -> tuple[list[dict], dict]:
             "cursor": cursor,
         }
 
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
+        response = get_page(url, params, app_id)
         data = response.json()
 
         # Capture summary from first page only
@@ -116,7 +151,7 @@ def fetch_reviews_for_game(app_id: int) -> tuple[list[dict], dict]:
         cursor = new_cursor
 
         # Small delay between pages to be polite
-        time.sleep(0.5)
+        time.sleep(SLEEP_BETWEEN_PAGES)
 
     return all_reviews[:MAX_REVIEWS_PER_GAME], query_summary
 
@@ -167,17 +202,18 @@ def log_to_neon(pg_conn, app_id: int, rows: int,
     pg_conn.commit()
 
 
-def main():
+def main(requested: list[int] | None = None) -> dict:
+    """Fetch reviews for all active games, or only `requested`. Returns counts per outcome and
+    failed_ids, so a caller can retry only the games that failed."""
     log.info("=== Steam Reviews Ingestion ===")
 
     app_ids = load_tracked_app_ids()
     log.info(f"Tracked games: {len(app_ids)}")
 
-    requested = [int(a) for a in sys.argv[1:]]
     if requested:
         untracked = set(requested) - set(app_ids)
         if untracked:
-            sys.exit(f"Not in tracked_games.csv: {sorted(untracked)}")
+            raise ValueError(f"Not active in tracked_games.csv: {sorted(untracked)}")
         app_ids = requested
         log.info(f"Restricted to {len(app_ids)} requested games")
 
@@ -187,6 +223,7 @@ def main():
     success_count = 0
     skipped_count = 0
     fail_count = 0
+    failed_ids = []
 
     for app_id in app_ids:
         log.info(f"Fetching reviews for {app_id}...")
@@ -209,6 +246,7 @@ def main():
             except Exception as log_err:
                 log.error(f"  [{app_id}] Failed to write to ingestion_log: {log_err}")
             fail_count += 1
+            failed_ids.append(app_id)
 
         time.sleep(SLEEP_BETWEEN_GAMES)
 
@@ -218,6 +256,8 @@ def main():
     log.info(f"  Skipped   : {skipped_count}  (0 reviews)")
     log.info(f"  Failed    : {fail_count}")
 
+    return {"success": success_count, "skipped": skipped_count, "failed": fail_count, "failed_ids": failed_ids}
+
 
 if __name__ == "__main__":
-    main()
+    main([int(a) for a in sys.argv[1:]] or None)

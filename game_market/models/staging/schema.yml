@@ -15,7 +15,11 @@ models:
           - not_null
 
   - name: stg_steam__player_counts
-    description: "Cleaned hourly player count observations from RustFS Parquet"
+    description: "Hourly (live) and 5-minute (backfill) player count observations from S3 Parquet. Grain: one row per game per recorded_at; hourly wins over backfill, then latest file."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['steam_app_id', 'recorded_at']
     columns:
       - name: steam_app_id
         description: "Steam App ID"
@@ -31,7 +35,7 @@ models:
           - not_null
 
   - name: stg_opencritic__reviews
-    description: "Critic reviews from OpenCritic via RapidAPI, English only, scored reviews only"
+    description: "Critic reviews from OpenCritic via RapidAPI, English only, scored reviews only. Grain: one row per review_id, latest fetch wins."
     columns:
       - name: review_id
         tests:
@@ -55,6 +59,10 @@ models:
 
   - name: stg_steamcharts__monthly
     description: "SteamCharts monthly table per game (scraped 2026-09-24). Grain: one game per calendar month, latest fetch wins."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['steam_app_id', 'activity_month']
     columns:
       - name: steam_app_id
         data_tests:
@@ -62,3 +70,66 @@ models:
       - name: activity_month
         data_tests:
           - not_null
+
+  - name: stg_steam__app_details
+    description: "Steam appdetails per game. Grain: one row per game, latest fetch wins."
+    columns:
+      - name: steam_app_id
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stg_steam__reviews
+    description: "Individual Steam user reviews (sample of up to 1,000 per game per fetch). Grain: one row per (steam_app_id, recommendation_id); latest fetch wins, and repeats across result pages within a fetch are collapsed."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['steam_app_id', 'recommendation_id']
+    columns:
+      - name: recommendation_id
+        data_tests:
+          - not_null
+
+  - name: stg_steam__reviews_summary
+    description: "Lifetime Steam review totals per game. Grain: one row per game, latest fetch wins."
+    columns:
+      - name: steam_app_id
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stg_itad__price_history
+    description: "ITAD price-change events per game and shop. Grain: one row per (itad_game_id, shop_id, observed_at); latest fetch wins, same-instant conflicts resolved deterministically."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['itad_game_id', 'shop_id', 'observed_at']
+
+  - name: stg_kaggle__steamcharts_monthly
+    description: "Static Kaggle SteamCharts snapshot (ends 2025-09). Grain: one row per game per month; the file is static, so there is nothing to deduplicate, only a test."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['steam_app_id', 'activity_month']
+
+  - name: stg_source_id_mapping
+    description: >
+      Source IDs per tracked game. Replaces the obsolete Neon table game_source_mapping. ITAD comes from the latest resolve_ids.py snapshot in S3 (transient errors
+      ignored). Rows in the manual_id_overrides seed always win, and OpenCritic comes only from there.
+      Grain: one row per (steam_app_id, source).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['steam_app_id', 'source']
+    columns:
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['matched_auto', 'matched_manual', 'matched_imported', 'no_coverage', 'not_found']
+      - name: source_game_id
+        data_tests:
+          - not_null:
+              config:
+                where: "status in ('matched_auto', 'matched_manual', 'matched_imported')"

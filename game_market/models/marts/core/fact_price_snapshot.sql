@@ -2,6 +2,8 @@ WITH staging AS (
     SELECT * FROM {{ ref('stg_itad__price_history') }}
 ),
 
+-- Since 2026-09-28 stg_itad__price_history already guarantees this grain (same rule, plus latest fetch wins);
+-- this step is kept as a no-op safeguard.
 -- ITAD sometimes records two different prices for the same game, shop and second (30 cases, 23 on Steam),
 -- typically a real deal row plus a 0.00 / 0% row. Keep exactly one, deterministically:
 --   1. prefer any row that is not "price 0 and discount 0" (the 0.00 / 0% rows are artefacts),

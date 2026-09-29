@@ -50,13 +50,13 @@ exposures:
       - ref('an_activity_health')
       - ref('fact_player_activity_monthly')
 
-  - name: dashboard_do_sales_bring_players
-    label: "Dashboard — Do sales bring players (Q3)"
+  - name: dashboard_do_discounts_bring_players
+    label: "Dashboard — Do discounts bring players? (Q3)"
     type: dashboard
     maturity: medium
     description: >
       Streamlit page dashboard/views/3_Sale_Effect.py showing player activity before,
-      during and after sale periods.
+      during and after Steam discount periods.
     owner:
       name: Ash
     depends_on:

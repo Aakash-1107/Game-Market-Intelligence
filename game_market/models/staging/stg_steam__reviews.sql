@@ -39,4 +39,17 @@ final as (
 
 )
 
+-- Grain: one row per (steam_app_id, recommendation_id). Raw is append-only, and Steam's cursor
+-- pagination also repeats reviews across pages within one fetch (~13% of rows on 2026-09-28),
+-- with author playtime/votes updated between pages. Latest fetch wins; within a fetch, the most
+-- recent snapshot of the review wins.
 select * from final
+qualify row_number() over (
+    partition by steam_app_id, recommendation_id
+    order by
+        fetched_at desc,
+        review_updated_at desc,
+        playtime_forever_minutes desc nulls last,
+        votes_up desc nulls last,
+        weighted_vote_score desc nulls last
+) = 1
