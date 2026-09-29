@@ -50,6 +50,8 @@ flags = an[an["is_anomaly"]].copy()
 flags["kind"] = flags.apply(lambda r: STEAM_WIDE if r["is_market_wide"]
                             else ("Unusual surge" if r["direction"] == "spike" else "Unusual drop"), axis=1)
 KINDS = ["Unusual surge", "Unusual drop", STEAM_WIDE]
+# legend names of the detail chart's series
+ACTUAL, BASELINE, NORMAL = "Players online (daily average)", "Baseline (previous 28 days)",     "Expected range (from the previous 28 days)"
 
 # ---- Chart 1: surges and sales -----------------------------------------------------------------
 # Only games that were ever on sale, so free-to-play games don't pad the "no sale" group.
@@ -70,15 +72,16 @@ bars = alt.Chart(rates).mark_bar(cornerRadiusEnd=4, height=26, color=INK_2).enco
 labels = bars.mark_text(align="left", dx=4, color=INK_2).encode(text=alt.Text("rate:Q", format=".1%"))
 chart_block(
     f"A sudden rush of players is about {ratio:.0f}× more likely on a day with a big discount than on a normal day",
-    "Each bar is the share of days on which a game had an unusual surge in players: more than 3 standard deviations "
-    "above its own previous 28 days (on a log scale), and not part of a Steam-wide move. Days are grouped by whether "
-    "the game was discounted on Steam that day, and how deep that discount went at its deepest. "
-    f"**Pooled across {len(paid):,} game-days from the {paid['steam_app_id'].nunique()} games that get discounted** "
-    "(a game with more days counts more). The ratio in the title is the 50%-or-more bar divided by the no-discount bar.",
+    "Each bar is the share of days with an unusual surge in players, grouped by how deep the Steam discount was "
+    "that day. The ratio in the title is the top bar divided by the no-discount bar.",
     (bars + labels).properties(height=190),
     "Big discounts and sudden player rushes go together. Note that a discount doesn't guarantee a rush, though: "
     "even on 50%+ discount days, most days are ordinary. Publishers also often time discounts to match big updates, "
     "so part of the effect is the update, not the price.",
+    details=("An unusual surge = more than 3 standard deviations above the game's own previous 28 days (on a log "
+             "scale), and not part of a Steam-wide move. Discount depth = the deepest point of that discount. "
+             f"Pooled across {len(paid):,} game-days from the {paid['steam_app_id'].nunique()} games that get "
+             "discounted (a game with more days counts more)."),
 )
 
 names = sorted(an["name"].unique())
@@ -106,12 +109,13 @@ def timeline_section():
     ).add_params(kind_legend)
     chart_block(
         f"Unusual days are mostly good news: {n_s} sudden surges against {n_d} drops across all {n_games} games",
-        "Each row is a game, each mark an unusual day. Up-triangles are surges, down-triangles are drops. "
-        f"Grey circles are days when 3 or more games moved the same way at once ({n_w} such days). That points to "
-        "something Steam-wide (like an outage or a Steam event), not something about that one game. " + LEGEND_HINT,
+        "Each row is a game, each mark an unusual day: up = surge, down = drop. "
+        "Grey circles are Steam-wide days, when 3 or more games moved the same way at once.",
         dots.properties(height=max(160, 44 * max(len(picked), 1))),
         "Surges cluster around content updates, new seasons and discounts. Drops are rarer and often come from "
         "server downtime. When a drop hits many games at once, it's Steam itself, not the games.",
+        details=(f"{n_w} Steam-wide days in the data. Many games moving at once points to something Steam-wide "
+                 "(like an outage or a Steam event), not something about that one game. " + LEGEND_HINT),
     )
 
 
@@ -148,29 +152,51 @@ def game_detail_section():
         if days.empty:
             st.info("No daily player data for this game in the selected period.")
         else:
-            # Headline = the flagged day furthest from its 28-day baseline, so title and picture agree
+            # Headline = the game's own flagged day (Steam-wide days left out) furthest from its 28-day baseline,
+            # so title and picture agree
+            own = gflags[~gflags["is_market_wide"]]
             if gflags.empty:
                 headline = f"{game} had no unusual days in this period"
+            elif own.empty:
+                wide = gflags["activity_date"].dt.strftime("%d %b %Y").tolist()
+                headline = (f"{game} had no unusual days of its own in this period: its only "
+                            + ("unusual day was" if len(wide) == 1 else f"{len(wide)} unusual days were")
+                            + f" Steam-wide ({', '.join(wide)}), when 3 or more games moved at once")
             else:
-                b = gflags.loc[gflags["vs_baseline"].map(lambda v: abs(np.log(v))).idxmax()]
+                b = own.loc[own["vs_baseline"].map(lambda v: abs(np.log(v))).idxmax()]
                 verb = "jumped to" if b.vs_baseline >= 1 else "fell to"
                 headline = (f"{game}'s biggest moment: on {b.activity_date:%d %b %Y} players {verb} "
                             f"{b.vs_baseline:.1f}× the level of the previous 28 days" + (f" ({b.known})" if b.known else ""))
             x_dom = [days["activity_date"].min(), days["activity_date"].max()]
             x = alt.X("activity_date:T", title=DAY_AXIS, scale=alt.Scale(domain=x_dom),
                       axis=alt.Axis(format="%b %Y", tickCount="month"))
-            y = alt.Y("avg_players:Q", title="Players online (daily average)", axis=alt.Axis(format="~s"))
+            # y-axis cut at 1.25x the busiest day: a wide band after a spike would otherwise flatten the line
+            y_scale = alt.Scale(domain=[0, days["avg_players"].max() * 1.25], nice=False)
+            y = alt.Y("avg_players:Q", title="Players online (daily average)", axis=alt.Axis(format="~s"), scale=y_scale)
+            # one row per calendar day: days without complete data become empty rows, so the lines break there
+            # instead of joining across the gap
+            full = pd.date_range(x_dom[0], x_dom[1], freq="D")
+            n_missing = len(full) - days["activity_date"].nunique()
+            line_days = (days.set_index("activity_date").reindex(full).rename_axis("activity_date").reset_index())
             tip = [alt.Tooltip("activity_date:T", title="Day (UTC)", format="%a %d %b %Y"),
                    alt.Tooltip("avg_players:Q", title="Players online (daily average)", format=",.0f"),
                    alt.Tooltip("baseline_players:Q", title="Previous 28 days (baseline)", format=",.0f"),
-                   alt.Tooltip("band_lower_players:Q", title="Normal range from", format=",.0f"),
-                   alt.Tooltip("band_upper_players:Q", title="Normal range to", format=",.0f"),
+                   alt.Tooltip("band_lower_players:Q", title="Expected range from", format=",.0f"),
+                   alt.Tooltip("band_upper_players:Q", title="Expected range to", format=",.0f"),
                    alt.Tooltip("z_score:Q", title="Standard deviations from baseline", format="+.1f")]
-            band = alt.Chart(days).mark_area(color=MUTED, opacity=0.18).encode(
-                x=x, y=alt.Y("band_lower_players:Q"), y2="band_upper_players:Q")
-            base = alt.Chart(days).mark_line(color=MUTED, strokeDash=[4, 3], strokeWidth=1.2).encode(
-                x=x, y="baseline_players:Q")
-            players = alt.Chart(days).mark_line(color=FLAT, strokeWidth=1.6).encode(x=x, y=y, tooltip=tip)
+            # one single-entry legend per series (colour scales resolved independently below), in a row under the
+            # chart: together with the day markers and the discount band they don't fit on one row at the top
+            def series(name: str, colour: str) -> alt.Color:
+                return alt.Color("series:N", title=None, scale=alt.Scale(domain=[name], range=[colour]),
+                                 legend=alt.Legend(orient="bottom"))
+            band = alt.Chart(line_days.assign(series=NORMAL)).mark_area(opacity=0.18, clip=True).encode(
+                x=x, y=alt.Y("band_lower_players:Q", scale=y_scale), y2="band_upper_players:Q", color=series(NORMAL, MUTED))
+            base = alt.Chart(line_days.assign(series=BASELINE)).mark_line(strokeDash=[4, 3], strokeWidth=1.2, clip=True).encode(
+                x=x, y=alt.Y("baseline_players:Q", scale=y_scale), color=series(BASELINE, MUTED),
+                strokeDash=alt.StrokeDash("series:N", title=None, scale=alt.Scale(domain=[BASELINE], range=[[4, 3]]),
+                                          legend=alt.Legend(orient="bottom")))
+            players = alt.Chart(line_days.assign(series=ACTUAL)).mark_line(strokeWidth=1.6).encode(
+                x=x, y=y, tooltip=tip, color=series(ACTUAL, FLAT))
             kinds = ["Unusual surge", "Unusual drop", STEAM_WIDE]
             marks = alt.Chart(gflags).mark_point(filled=True, size=110, opacity=1, stroke="white", strokeWidth=1.5).encode(
                 x=x, y="avg_players:Q",
@@ -185,14 +211,19 @@ def game_detail_section():
                     x=x, y="avg_players:Q", text="known:N"))
             chart_block(
                 headline,
-                "The blue line is actual players online each day (UTC days, daily average). The dashed grey line is the "
-                "**baseline the detector used: the previous 28 days** (their typical level on a log scale), and the grey "
-                "band is its normal range (±3 standard deviations). A day outside the band is an unusual day: triangles "
-                "mark them (up = surge, down = drop, grey circle = Steam-wide). Not combined: one game. "
-                "The first 3 weeks of data have no band yet (fewer than 21 days of history). Yellow bands are Steam discounts.",
-                alt.layer(*layers).resolve_scale(color="independent").properties(height=320),
+                "The grey band shows what counts as normal on each day. "
+                "A day is unusual only if the blue line leaves the band.",
+                alt.layer(*layers).resolve_scale(color="independent", strokeDash="independent").properties(height=320),
                 "Check each triangle for a yellow band (a discount) or a label (a known update). Surges with neither "
                 "usually match news, streamers or events we don't track.",
+                details=("Blue line = players online each day (daily average). Dashed line = the baseline the detector "
+                         "used: the previous 28 days (their typical level on a log scale); the band (\"Expected "
+                         "range\") is ±3 standard deviations around it. Triangles mark unusual days (up = surge, "
+                         "down = drop, grey circle = Steam-wide); yellow bands are Steam discounts. The first 3 weeks "
+                         "have no band yet (fewer than 21 days of history). The y-axis stops at 1.25× the busiest "
+                         "day, so a very wide band can run off the top. "
+                         + (f"Gaps in the lines are days without complete data ({n_missing} in this period)."
+                            if n_missing else "No days are missing in this period.")),
             )
 
     if not gflags.empty:

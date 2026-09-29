@@ -149,11 +149,11 @@ if len(hourly) >= 24:
     chart_block(
         title,
         f"Players online every hour from the live pipeline, {hs.index.min():%d %b} – {hs.index.max():%d %b %Y, %H:%M} "
-        "(Berlin time). The daily wave is day vs. night. The dashed line is the last complete month's average. "
-        "Breaks in the line are hours when the collector wasn't running.",
+        "(Berlin time). The dashed line is the last complete month's average.",
         alt.layer(*hlayers).properties(height=240),
         "This is the most recent data in the dashboard. It picks up updates and events from this month, "
         "before they show up in the monthly history above.",
+        details="The daily wave is day vs. night. Breaks in the line are hours when the collector wasn't running.",
     )
 
 # ---- Price history on Steam ---------------------------------------------------------------------
@@ -211,9 +211,10 @@ else:
         f"Players who put in the most hours are {direction} positive" + ("" if direction == "about as" else " than newcomers") +
         f": {hi.positive:.0%} of reviewers with {rv.index[-1].lower()} played recommend it, "
         f"vs. {lo.positive:.0%} of those with {rv.index[0].lower()}",
-        f"Based on the {int(k.n_reviews):,} most recent Steam reviews. Each bar is the share of reviewers who "
-        "recommend the game, grouped by how long they'd played when they wrote the review. Groups with fewer than 20 reviews are hidden.",
+        "Each bar is the share of reviewers who recommend the game, grouped by how long they'd played when they "
+        f"wrote the review. Based on the {int(k.n_reviews):,} most recent Steam reviews.",
         (bars + lbl).properties(height=260),
         "Early reviews show first impressions; long-time players' reviews show whether the game holds up. "
         "A big gap between the two tells you which kind of game this is.",
+        details="Groups with fewer than 20 reviews are hidden.",
     )

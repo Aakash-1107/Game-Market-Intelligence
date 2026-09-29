@@ -60,15 +60,16 @@ move_labels_neg = move_bars.mark_text(dx=-4, align="right", color=INK_2).encode(
     text=alt.Text("vs_last_month:Q", format="+.0%"), color=alt.value(INK_2))
 chart_block(
     "Which games gained or lost the most players this week?",
-    f"The {N_MOVERS} biggest rises and {N_MOVERS} biggest falls among the {len(comparable)} games with both numbers: "
-    f"each game's average players over the last 7 days compared with **its own {month:%B %Y} monthly average (= 100%, "
-    "so 0% = no change)**. Not combined: one bar per game. The scale is compressed so a +800% jump and a −50% dip both fit.",
+    f"The {N_MOVERS} biggest rises and falls: each game's last 7 days compared with **its own {month:%B %Y} "
+    "average** (0% = no change).",
     alt.layer(move_bars,
               move_labels.transform_filter("datum.vs_last_month >= 0"),
               move_labels_neg.transform_filter("datum.vs_last_month < 0")).properties(height=300),
     "The monthly pages stop at the last complete month, so big updates this month only show up here. "
     "A jump like this usually means a major update, a new season or a launch on a new platform.",
     how_label=None,
+    details=(f"Out of the {len(comparable)} games with both numbers; one bar per game. The scale is compressed so a "
+             "+800% jump and a −50% dip both fit."),
 )
 
 with st.expander("All games right now"):

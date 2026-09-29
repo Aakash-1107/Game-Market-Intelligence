@@ -2,8 +2,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from common import (COUNT_AXIS, HOVER_HINT, INK, INK_2, MUTED, PATTERN, PATTERN_ORDER, chart_block, coverage,
-                    highlight_lines, page_header, pct, scale_for, spread_labels)
+from common import (COUNT_AXIS, HOVER_HINT, INK, INK_2, MUTED, PATTERN, PATTERN_ORDER, baseline_range, chart_block,
+                    coverage, highlight_lines, page_header, pct, scale_for, share_of, spread_labels)
 from db import query
 
 cov = coverage()
@@ -34,6 +34,12 @@ curves = query("""
     from reporting.rpt_lifecycle_curve
 """)
 curves["pattern"] = curves["lifecycle_pattern"].map(lambda p: PATTERN[p][0])
+curves["in_players"] = [share_of(f"Month {m}", v, b, "launch peak")
+                        for m, v, b in zip(curves["month_idx"], curves["avg_players"], curves["launch_peak_avg"])]
+
+# Month 0 in every caption that uses the launch peak as 100%
+MONTH_0 = ("Month 0 is the calendar month of the game's Steam release date, so it is usually a partial month, "
+           "or, for games that were in Early Access before their 1.0 release, it also includes Early Access days.")
 
 # "Typical game" = median across games with at least a year of history (computed in rpt_lifecycle_typical_curve).
 settled = curves[curves["is_settled"]]
@@ -70,10 +76,8 @@ def typical_curve_section():
     lines = alt.Chart(sel).mark_line(strokeWidth=2).encode(
         x=x, y=y, detail="name:N",
         color=alt.Color("pattern:N", title="Pattern after one year", scale=scale_for(PATTERN, PATTERN_ORDER)),
-        tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("month_idx:Q", title="Month"),
-                 alt.Tooltip("vs_peak:Q", title="% of launch peak", format=".0%"),
-                 alt.Tooltip("avg_players:Q", title="Players online (monthly average)", format=",.0f"),
-                 alt.Tooltip("launch_peak_avg:Q", title="Launch peak (100%)", format=",.0f"),
+        tooltip=[alt.Tooltip("name:N", title="Game"),
+                 alt.Tooltip("in_players:N", title="Players online (monthly average)"),
                  alt.Tooltip("pattern:N", title="Pattern")])
     ends = sel.loc[sel.groupby("name")["month_idx"].idxmax(), ["name", "month_idx", "vs_peak"]]
     if show_typical:
@@ -88,16 +92,19 @@ def typical_curve_section():
     chart_block(
         f"A typical game is down to {pct(m3)} of its launch crowd after 3 months, "
         f"then levels off at around {pct(plateau)}",
-        "**100%** (top grey line) is each game's own launch peak: its busiest month from the release month to "
-        "3 months later. The thick black line is the typical game: the **median across "
-        f"{n_settled} games** with at least a year of history, month by month (fewer games in later months: "
-        f"{int(mc.index.max())} months after launch has {int(median_curve['games'].iloc[-1])}). "
-        "The thin lines are the games you picked, coloured by the pattern they end up in. " + HOVER_HINT,
+        "**100% = the game's busiest month within its first four months (month 0 to month 3).** "
+        f"Black line = the typical game (median of {n_settled} games); thin lines = the games you picked.",
         alt.layer(ref, *highlight_lines(lines, "pattern"), *([typical] if show_typical else []), end_labels)
         .properties(height=420),
         "The launch rush is short. Most players who show up in the first weeks are gone within a few months. "
         "After that the curve flattens: the players who are left tend to stay. The small bumps at 12 and 24 months "
         "line up with the game's anniversary, when many games run discounts or release updates.",
+        baseline=baseline_range(settled.drop_duplicates("name"), "launch_peak_avg", "name", "Launch peak (100%)",
+                                f"the {n_settled} games behind the typical game"),
+        details=(f"{MONTH_0} The typical game is the median across the {n_settled} games with at least a year of "
+                 f"history, month by month; later months have fewer games ({int(mc.index.max())} months after launch "
+                 f"has {int(median_curve['games'].iloc[-1])}). Thin lines are coloured by the pattern the game ends up "
+                 f"in. {HOVER_HINT}"),
     )
     st.caption(f"Typical game = median of the {n_settled} games that have at least a year of "
                "history since launch, including re-releases and games that went free-to-play later.")
@@ -122,12 +129,13 @@ bar_labels = bars.mark_text(align="left", dx=4, color=INK_2).encode(text="games:
 chart_block(
     f"{fast} of {judged['games'].sum()} games had a big launch and then a fast drop — "
     f"but {grow} kept growing past their launch",
-    "Each bar counts games by where they stood one year after launch, compared with their launch peak: "
-    "**fast drop** = below 30%, **slow fade** = 30–60%, **holds steady** = 60–100%, "
-    "**keeps growing** = above 100%. \"Too new to tell\" games haven't been out for a year yet.",
+    "Each bar counts games by where they stood one year after launch, compared with their launch peak.",
     (bars + bar_labels).properties(height=230),
     "There are two very different kinds of game. Story-driven blockbusters (played once, then finished) "
     "tend to drop fast. Online and multiplayer games that keep adding content often end up bigger than at launch.",
+    details=("**Fast drop** = below 30% of the launch peak after one year, **slow fade** = 30–60%, "
+             "**holds steady** = 60–100%, **keeps growing** = above 100%. \"Too new to tell\" games haven't been out "
+             "for a year yet."),
 )
 
 # ---- Chart 3: comebacks ------------------------------------------------------------------------
@@ -138,6 +146,7 @@ cb = comeback.melt(id_vars=["name", "pattern", "launch_peak_avg", "lowest_after_
 cb["players"] = cb["lowest_after_launch_players"].where(cb["point"] == "lowest_vs_launch_peak", cb["latest_avg_players"])
 cb["point"] = cb["point"].map({"lowest_vs_launch_peak": "Lowest point after launch",
                                "latest_vs_launch_peak": LATEST})
+cb["in_players"] = [share_of(p, v, b, "launch peak") for p, v, b in zip(cb["point"], cb["players"], cb["launch_peak_avg"])]
 order = comeback["name"].tolist()
 cy = alt.Y("name:N", sort=order, title=None)
 cx = alt.X("vs_peak:Q", title="Players, as % of the launch peak", axis=alt.Axis(format="%"))
@@ -149,22 +158,21 @@ dots = alt.Chart(cb).mark_point(filled=True, size=110, stroke="white", strokeWid
                                                           range=[MUTED, INK])),
     shape=alt.Shape("point:N", title=None, scale=alt.Scale(domain=["Lowest point after launch", LATEST],
                                                             range=["circle", "diamond"])),
-    tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("point:N", title=" "),
-             alt.Tooltip("vs_peak:Q", title="% of launch peak", format=".0%"),
-             alt.Tooltip("players:Q", title="Players online (monthly average)", format=",.0f"),
-             alt.Tooltip("launch_peak_avg:Q", title="Launch peak (100%)", format=",.0f")])
+    tooltip=[alt.Tooltip("name:N", title="Game"),
+             alt.Tooltip("in_players:N", title="Players online (monthly average)")])
 peak_rule = alt.Chart(pd.DataFrame({"x": [1.0]})).mark_rule(color=MUTED, strokeDash=[]).encode(x="x:Q")
 above = int((comeback["latest_vs_launch_peak"] >= 1).sum())
 chart_block(
     f"{len(comeback)} games made a comeback after losing more than half their players — "
     f"{above} of them were bigger than at launch in {last:%B %Y}",
-    "Each row is one game. The grey circle is its lowest month after launch; the black diamond is where it "
-    f"was in {last:%B %Y}. **100%** (vertical line) is each game's own launch peak (busiest month in its first four "
-    f"months). Not combined: one row per game, {len(comeback)} games. Only games that fell below half their launch "
-    "peak and later climbed back to at least three-quarters of it are shown.",
+    f"Grey circle = the game's lowest month after launch, black diamond = {last:%B %Y}. "
+    "**100% = the game's busiest month within its first four months (month 0 to month 3).**",
     (peak_rule + rules + dots).properties(height=max(220, 26 * len(comeback))),
     "A bad first year isn't the end. Big updates, a move to free-to-play, or a new console or Steam release "
     "can bring players back — sometimes more than ever.",
+    baseline=baseline_range(comeback, "launch_peak_avg", "name", "Launch peak (100%)", f"these {len(comeback)} games"),
+    details=(f"One row per game, {len(comeback)} games: only games that fell below half their launch peak and later "
+             f"climbed back to at least three-quarters of it. {MONTH_0}"),
 )
 
 with st.expander("All games: numbers behind these charts"):

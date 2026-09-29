@@ -72,7 +72,7 @@ Monthly figures are the average of those readings over the month.
 discount charts, so a huge game and a small one can share one chart.
 
 **Previous 28 days** — the baseline for unusual days: the game's typical level over the 28 days before (on a log
-scale), with a normal range of ±3 standard deviations around it.
+scale), with an expected range of ±3 standard deviations around it.
 
 **Days** — calendar days in UTC.
 
@@ -242,13 +242,18 @@ def live_snapshot() -> pd.DataFrame:
 
 
 def chart_block(title: str, how: str, chart, meaning: str, how_label: str | None = "How to read this",
-                **chart_kwargs):
+                baseline: str | None = None, details: str | None = None, **chart_kwargs):
     """Every chart ships with a finding-title, a 'how to read' line and a 'what this means' line.
-    how_label=None shows `how` as a plain one-line caption. chart_kwargs go to st.altair_chart
-    (key / on_select / selection_mode for clickable charts); its return value is passed back."""
+    `how` stays at two short sentences at most; the rest (definitions, counts, interactions) goes in `details`,
+    shown behind the (?) icon of that line. how_label=None shows `how` as a plain one-line caption.
+    baseline: one line right under an indexed chart saying what its 100% is in players (see baseline_range).
+    chart_kwargs go to st.altair_chart (key / on_select / selection_mode for clickable charts); its return value
+    is passed back."""
     st.markdown(f"#### {title}")
-    st.caption(f"**{how_label}:** {how}" if how_label else how)
+    st.caption(f"**{how_label}:** {how}" if how_label else how, help=details)
     event = st.altair_chart(style(chart), width="stretch", theme=None, **chart_kwargs)
+    if baseline:
+        st.caption(f":material/straighten: {baseline}")
     st.markdown(f"**What this means:** {meaning}")
     st.write("")
     return event
@@ -311,6 +316,29 @@ def spread_labels(ends: pd.DataFrame, ycol: str, min_gap: float) -> pd.DataFrame
 
 def pct(x: float, signed: bool = False) -> str:
     return f"{x * 100:+.0f}%" if signed else f"{x * 100:.0f}%"
+
+
+def players(x: float) -> str:
+    return f"{x:,.0f}"
+
+
+def share_of(label: str, value: float, base: float, base_name: str) -> str:
+    """Tooltip sentence behind an indexed point, e.g. 'Month 3: 12,340 players = 47% of launch peak 26,100'."""
+    return f"{label}: {players(value)} players = {pct(value / base)} of {base_name} {players(base)}"
+
+
+def baseline_range(items: pd.DataFrame, value: str, label: str, what: str, across: str) -> str:
+    """The spread of a chart's 100% across what the chart includes, computed from the data:
+    lowest (which), median, highest (which). items: one row per game (or discount); `label` names each row."""
+    v = items.dropna(subset=[value])
+    lo, hi = v.loc[v[value].idxmin()], v.loc[v[value].idxmax()]
+    return (f"**{what}** across {across}: lowest {players(lo[value])} players ({lo[label]}), "
+            f"median {players(v[value].median())}, highest {players(hi[value])} ({hi[label]}).")
+
+
+def middle_row(df: pd.DataFrame, col: str) -> pd.Series:
+    """The row at the median of `col` (the lower of the two middle rows when the count is even)."""
+    return df.sort_values(col).iloc[(len(df) - 1) // 2]
 
 
 def game_image(url: str | None, width: int = 230) -> None:

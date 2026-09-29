@@ -76,13 +76,13 @@ worst = hourly.sort_values("completeness_pct").iloc[0] if len(hourly) else None
 chart_block(
     "How complete was each day's data collection?" if worst is None else
     f"Hourly collection: lowest day {worst.activity_date:%d %b} at {worst.completeness_pct:.0f}%",
-    "Each point is one source on one UTC day. **100% = every active game collected**: for hourly player counts "
-    f"that is {int(hourly['expected'].iloc[-1]) if len(hourly) else 0} game-hours a day (active games × 24); for the "
-    "daily sources, every active game once. Days without any attempt count as 0% (for the daily sources that "
-    "means the daily flow did not run that day). Games added recently make earlier days read slightly below 100%.",
+    "Each point is one source on one UTC day. **100% = every active game collected.**",
     lines.properties(height=320),
     "A dip in the hourly line is a collector outage or rate limiting; a daily source at 0% means the daily flow "
     "was not run that day.",
+    details=(f"For hourly player counts, 100% is {int(hourly['expected'].iloc[-1]) if len(hourly) else 0} game-hours "
+             "a day (active games × 24); for the daily sources, every active game once. Days without any attempt "
+             "count as 0%. Games added recently make earlier days read slightly below 100%."),
 )
 
 # ---- dbt builds --------------------------------------------------------------------------------------

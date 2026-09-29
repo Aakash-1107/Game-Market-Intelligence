@@ -2,8 +2,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from common import (COUNT_AXIS, HEALTH, HEALTH_ORDER, HOVER_HINT, INK, INK_2, LEGEND_HINT, MUTED, chart_block,
-                    highlight_lines, legend_filter, page_header, pct, scale_for, spread_labels)
+from common import (COUNT_AXIS, HEALTH, HEALTH_ORDER, HOVER_HINT, INK, INK_2, LEGEND_HINT, MUTED, baseline_range,
+                    chart_block, highlight_lines, legend_filter, page_header, pct, scale_for, share_of, spread_labels)
 from db import query
 
 bounds = query("select min(window_start) as window_start, max(window_end) as window_end from reporting.rpt_activity_health").iloc[0]
@@ -47,12 +47,13 @@ decl_txt = (f"only {n['Declining']} ({', '.join(declining_names)}) is clearly de
             else f"{n['Declining']} are clearly declining")
 chart_block(
     f"Most games are holding steady: {n['Stable']} of {len(judged)} were stable over the last year, and {decl_txt}",
-    f"Each bar counts games by the direction of their player numbers over {period}. "
-    "**Growing / Declining** = a steady rise or fall of at least 3% a month. **Stable** = less than 3% a month either way. "
-    "**Up-and-down** = big swings with no clear direction. Games out for less than a year are \"too new to judge\".",
+    f"Each bar counts games by the direction of their player numbers over {period}.",
     (bars + labels).properties(height=230),
     "The established games in this set are mostly in a steady state. Big moves over a year are rare. "
     "When they happen, they usually come from a major update or re-launch, not from a slow drift.",
+    details=("**Growing / Declining** = a steady rise or fall of at least 3% a month. **Stable** = less than 3% a "
+             "month either way. **Up-and-down** = big swings with no clear direction. Games out for less than a year "
+             "are \"too new to judge\"."),
 )
 
 # ---- Charts 2 + 3: scatter and trend lines, linked -----------------------------------------------
@@ -61,16 +62,21 @@ chart_block(
 plot = judged.dropna(subset=["current_level_3m", "change_12m_pct"]).copy()
 CAP = 1.5
 plot["y"] = plot["change_12m_pct"].clip(upper=CAP)
+plot["in_players"] = [share_of(recent, c, b, f"the {start} average")
+                      for c, b in zip(plot["current_level_3m"], plot["start_level_3m"])]
 clipped = plot[plot["change_12m_pct"] > CAP]
 
 trend = query("""
-    select h.name, h.health_class, m.activity_month, m.avg_players / h.start_level_3m as vs_start
+    select h.name, h.health_class, m.activity_month, m.avg_players / h.start_level_3m as vs_start,
+           m.avg_players, h.start_level_3m
     from reporting.rpt_activity_health h
     join marts.fact_player_activity_monthly m
       on m.steam_app_id = h.steam_app_id and m.activity_month between h.window_start and h.window_end
     where h.start_level_3m > 0
 """)
 trend["health"] = trend["health_class"].map(lambda c: HEALTH[c][0])
+trend["in_players"] = [share_of(f"{pd.Timestamp(m):%b %Y}", v, b, f"the {start} average")
+                       for m, v, b in zip(trend["activity_month"], trend["avg_players"], trend["start_level_3m"])]
 
 PICKED = "health_picked"  # session-state key of the game picker
 if PICKED not in st.session_state:
@@ -108,8 +114,8 @@ def compare_section():
         stroke=alt.when(alt.datum.compared).then(alt.value(INK)).otherwise(alt.value("white")),
         strokeWidth=alt.when(alt.datum.compared).then(alt.value(2)).otherwise(alt.value(1.2)),
         tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("health:N", title="Health"),
-                 alt.Tooltip("current_level_3m:Q", title=f"Players online, {recent} avg", format=",.0f"),
-                 alt.Tooltip("change_12m_pct:Q", title="Change over 12 months", format="+.0%")],
+                 alt.Tooltip("change_12m_pct:Q", title="Change over 12 months", format="+.0%"),
+                 alt.Tooltip("in_players:N", title="Players online (average)")],
     ).add_params(pick, health_legend)
     note = alt.Chart(clipped).mark_text(align="left", dx=8, dy=-2, fontSize=11, color=INK_2).encode(
         x="current_level_3m:Q", y="y:Q",
@@ -118,15 +124,19 @@ def compare_section():
 
     chart_block(
         "Games of the same size can be heading in opposite directions",
-        f"Each dot is one game. Further right = more players in {recent} (each gridline is about 3× the one before). "
-        f"Higher up = gained players: the {recent} average compared with the {start} average (**the first three months "
-        f"of the window = 100%**, so the grey line at 0% = no change). Not combined: one dot per game, {len(plot)} games"
-        + (f" ({len(clipped)} above +{CAP:.0%} is drawn at the top edge)" if len(clipped) else "") + ". "
-        "The colour (and shape) shows the health class, based on how steady the trend was — not just start vs. end. "
-        "**Click a dot** to add that game to the trend chart below (dark ring = already there). " + LEGEND_HINT,
+        f"Further right = more players in {recent}; higher up = more players than in {start} (0% = no change). "
+        "**Click a dot** to add that game to the trend chart below.",
         (zero + pts + note).properties(height=440),
         "Size doesn't predict direction. Among games with a similar number of players, some are clearly "
         "growing while others shrink or swing around. Player count alone is a poor guide to a game's health.",
+        baseline=baseline_range(plot, "start_level_3m", "name", f"The {start} average (100%)",
+                                f"these {len(plot)} games"),
+        details=(f"One dot per game, {len(plot)} games"
+                 + (f" ({len(clipped)} above +{CAP:.0%} is drawn at the top edge)" if len(clipped) else "") + ". "
+                 f"The x-axis is a log scale: each gridline is about 3× the one before. 100% = the game's {start} "
+                 "average, the first three months of the window. Colour and shape show the health class, based on how "
+                 "steady the trend was, not just start vs. end. A dark ring = already in the trend chart below. "
+                 + LEGEND_HINT),
         key="health_scatter", on_select=add_clicked_game, selection_mode=["pick"],
     )
 
@@ -146,8 +156,8 @@ def compare_section():
     lines = alt.Chart(tsel).mark_line(strokeWidth=2, point=alt.OverlayMarkDef(size=30)).encode(
         x=x, y=y, detail="name:N",
         color=alt.Color("health:N", title=None, scale=scale_for(HEALTH, HEALTH_ORDER)),
-        tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("activity_month:T", title="Month", format="%b %Y"),
-                 alt.Tooltip("vs_start:Q", title="vs. start of the year", format=".0%"),
+        tooltip=[alt.Tooltip("name:N", title="Game"),
+                 alt.Tooltip("in_players:N", title="Players online (monthly average)"),
                  alt.Tooltip("health:N", title="Health")])
     labels = spread_labels(last, "vs_start", min_gap=max(1.0, tsel["vs_start"].max()) * 0.06)
     end_labels = alt.Chart(labels).mark_text(align="left", dx=8, fontSize=11, color=INK_2).encode(
@@ -157,13 +167,15 @@ def compare_section():
         f"{top['name']} is at {pct(top['vs_start'])} of where it started the year"
     chart_block(
         title,
-        f"Each line is one game. **100%** (grey line) is that game's own average over {start}, the first three months "
-        f"of the window. Not combined: one line per game you pick (from {len(judged)} games). "
-        "A line above 100% means more players than at the start of the year. Colours match the health classes above. "
-        + HOVER_HINT,
+        f"Each line is one game you picked. **100% = the game's own average over {start}.**",
         alt.layer(base, *highlight_lines(lines, "health"), end_labels).properties(height=380),
         "Putting every game on its own starting point shows the direction clearly, even for games whose "
         "player counts differ by a factor of a hundred.",
+        baseline=baseline_range(tsel.drop_duplicates("name"), "start_level_3m", "name",
+                                f"The {start} average (100%)", f"the {tsel['name'].nunique()} games picked"),
+        details=(f"Pick from {len(judged)} games. {start} is the first three months of the window. A line above 100% "
+                 f"means more players than at the start of the year. Colours match the health classes above. "
+                 + HOVER_HINT),
     )
 
 
