@@ -3,7 +3,8 @@ import pandas as pd
 import streamlit as st
 
 from common import (COUNT_AXIS, HEALTH, HEALTH_ORDER, HOVER_HINT, INK, INK_2, LEGEND_HINT, MUTED, baseline_range,
-                    chart_block, highlight_lines, legend_filter, page_header, pct, scale_for, share_of, spread_labels)
+                    chart_block, highlight_lines, legend_filter, page_header, pct, scale_for, share_of,
+                    spread_labels, view_toggle)
 from db import query
 
 bounds = query("select min(window_start) as window_start, max(window_end) as window_end from reporting.rpt_activity_health").iloc[0]
@@ -62,6 +63,7 @@ chart_block(
 plot = judged.dropna(subset=["current_level_3m", "change_12m_pct"]).copy()
 CAP = 1.5
 plot["y"] = plot["change_12m_pct"].clip(upper=CAP)
+plot["change_players"] = plot["current_level_3m"] - plot["start_level_3m"]
 plot["in_players"] = [share_of(recent, c, b, f"the {start} average")
                       for c, b in zip(plot["current_level_3m"], plot["start_level_3m"])]
 clipped = plot[plot["change_12m_pct"] > CAP]
@@ -95,6 +97,7 @@ def add_clicked_game() -> None:
 
 @st.fragment
 def compare_section():
+    in_pct = view_toggle("health_view")
     picked = st.session_state[PICKED]
     pick = alt.selection_point(name="pick", fields=["name"], on="click")
     health_legend = legend_filter("health")
@@ -104,8 +107,10 @@ def compare_section():
         x=alt.X("current_level_3m:Q", title=f"Players online, {recent} average (log scale)",
                 scale=alt.Scale(type="log", domain=[1_500, 1_200_000]),
                 axis=alt.Axis(format="~s", values=[3_000, 10_000, 30_000, 100_000, 300_000, 1_000_000])),
-        y=alt.Y("y:Q", title="Change over the last 12 months", axis=alt.Axis(format="+%"),
-                scale=alt.Scale(domain=[-1, CAP])),
+        y=(alt.Y("y:Q", title="Change over the last 12 months", axis=alt.Axis(format="+%"),
+                 scale=alt.Scale(domain=[-1, CAP])) if in_pct else
+           alt.Y("change_players:Q", title=f"Change in players, {start} → {recent} (compressed scale)",
+                 scale=alt.Scale(type="symlog", constant=1_000), axis=alt.Axis(format="+~s"))),
         color=alt.Color("health:N", title=None, scale=scale_for(HEALTH, HEALTH_ORDER[:4])),
         shape=alt.Shape("health:N", title=None, scale=alt.Scale(domain=HEALTH_ORDER[:4],
                                                                  range=["triangle-up", "circle", "diamond", "triangle-down"])),
@@ -115,6 +120,7 @@ def compare_section():
         strokeWidth=alt.when(alt.datum.compared).then(alt.value(2)).otherwise(alt.value(1.2)),
         tooltip=[alt.Tooltip("name:N", title="Game"), alt.Tooltip("health:N", title="Health"),
                  alt.Tooltip("change_12m_pct:Q", title="Change over 12 months", format="+.0%"),
+                 alt.Tooltip("change_players:Q", title="Change in players", format="+,.0f"),
                  alt.Tooltip("in_players:N", title="Players online (average)")],
     ).add_params(pick, health_legend)
     note = alt.Chart(clipped).mark_text(align="left", dx=8, dy=-2, fontSize=11, color=INK_2).encode(
@@ -123,14 +129,16 @@ def compare_section():
         label="datum.name + ' (' + format(datum.change_12m_pct, '+.0%') + ', off the scale)'")
 
     chart_block(
-        "Games of the same size can be heading in opposite directions",
+        "Size doesn't predict direction: games with similar player numbers are growing and declining",
         f"Further right = more players in {recent}; higher up = more players than in {start} (0% = no change). "
         "**Click a dot** to add that game to the trend chart below.",
-        (zero + pts + note).properties(height=440),
+        (zero + pts + note if in_pct else zero + pts).properties(height=440),
         "Size doesn't predict direction. Among games with a similar number of players, some are clearly "
         "growing while others shrink or swing around. Player count alone is a poor guide to a game's health.",
-        baseline=baseline_range(plot, "start_level_3m", "name", f"The {start} average (100%)",
-                                f"these {len(plot)} games"),
+        baseline=(baseline_range(plot, "start_level_3m", "name", f"The {start} average (100%)",
+                                 f"these {len(plot)} games") if in_pct else
+                  f"Showing players: height = players gained or lost between {start} and {recent} "
+                  "(compressed scale, so both small and huge games fit)."),
         details=(f"One dot per game, {len(plot)} games"
                  + (f" ({len(clipped)} above +{CAP:.0%} is drawn at the top edge)" if len(clipped) else "") + ". "
                  f"The x-axis is a log scale: each gridline is about 3× the one before. 100% = the game's {start} "
@@ -151,7 +159,9 @@ def compare_section():
     last = tsel.loc[tsel.groupby("name")["activity_month"].idxmax()]
     top, bottom = last.sort_values("vs_start").iloc[-1], last.sort_values("vs_start").iloc[0]
     x = alt.X("activity_month:T", title=None, axis=alt.Axis(format="%b %Y"))
-    y = alt.Y("vs_start:Q", title="Players vs. the start of the year", axis=alt.Axis(format="%"))
+    val = "vs_start" if in_pct else "avg_players"
+    y = (alt.Y("vs_start:Q", title="Players vs. the start of the year", axis=alt.Axis(format="%")) if in_pct else
+         alt.Y("avg_players:Q", title="Players online (monthly average)", axis=alt.Axis(format="~s")))
     base = alt.Chart(pd.DataFrame({"y": [1.0]})).mark_rule(color=MUTED).encode(y="y:Q")
     lines = alt.Chart(tsel).mark_line(strokeWidth=2, point=alt.OverlayMarkDef(size=30)).encode(
         x=x, y=y, detail="name:N",
@@ -159,7 +169,7 @@ def compare_section():
         tooltip=[alt.Tooltip("name:N", title="Game"),
                  alt.Tooltip("in_players:N", title="Players online (monthly average)"),
                  alt.Tooltip("health:N", title="Health")])
-    labels = spread_labels(last, "vs_start", min_gap=max(1.0, tsel["vs_start"].max()) * 0.06)
+    labels = spread_labels(last, val, min_gap=(max(1.0, tsel["vs_start"].max()) if in_pct else tsel["avg_players"].max()) * 0.06)
     end_labels = alt.Chart(labels).mark_text(align="left", dx=8, fontSize=11, color=INK_2).encode(
         x=x, y=alt.Y("label_y:Q"), text="name:N")
     title = (f"Over the same 12 months, {top['name']} went to {pct(top['vs_start'])} of its starting level "
@@ -168,11 +178,12 @@ def compare_section():
     chart_block(
         title,
         f"Each line is one game you picked. **100% = the game's own average over {start}.**",
-        alt.layer(base, *highlight_lines(lines, "health"), end_labels).properties(height=380),
+        alt.layer(*([base] if in_pct else []), *highlight_lines(lines, "health"), end_labels).properties(height=380),
         "Putting every game on its own starting point shows the direction clearly, even for games whose "
         "player counts differ by a factor of a hundred.",
-        baseline=baseline_range(tsel.drop_duplicates("name"), "start_level_3m", "name",
-                                f"The {start} average (100%)", f"the {tsel['name'].nunique()} games picked"),
+        baseline=(baseline_range(tsel.drop_duplicates("name"), "start_level_3m", "name",
+                                 f"The {start} average (100%)", f"the {tsel['name'].nunique()} games picked") if in_pct
+                  else "Showing players: the y-axis fits the games you picked."),
         details=(f"Pick from {len(judged)} games. {start} is the first three months of the window. A line above 100% "
                  f"means more players than at the start of the year. Colours match the health classes above. "
                  + HOVER_HINT),

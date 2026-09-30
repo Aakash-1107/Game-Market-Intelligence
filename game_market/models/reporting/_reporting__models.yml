@@ -157,7 +157,7 @@ models:
           - not_null
 
   - name: rpt_discount_typical
-    description: "Q3 typical discount. One row per discount group (all / 75_or_more / under_50) per phase. Median lift pooled across clean discounts; 100% = the 14 days before each discount."
+    description: "Q3 typical discount. One row per discount group (all / 75_or_more / under_50) per phase. Median lift pooled across clean discounts (mean_lift = their plain average); 100% = the 14 days before each discount."
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -168,6 +168,20 @@ models:
           - accepted_values:
               arguments:
                 values: ['before', 'during', 'first_week_after', 'weeks_2_4_after']
+
+  - name: rpt_discount_by_depth
+    description: "Q3 header. One row per discount-depth bucket (under_50 / 50_to_74 / 75_or_more, by max_discount_pct): median and mean lift during the discount over the same clean discounts as rpt_discount_typical. few_cases = fewer than 10 discounts."
+    columns:
+      - name: depth_bucket
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['under_50', '50_to_74', '75_or_more']
+      - name: n_discounts
+        data_tests:
+          - not_null
 
   - name: rpt_discount_effect_daily
     description: "Q3 game detail. One row per valid discount episode per complete 5-minute UTC day in its window (14 days before to 28 days after). vs_baseline = avg_players / the episode's baseline_avg."

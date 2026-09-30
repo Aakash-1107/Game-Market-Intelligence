@@ -64,9 +64,11 @@ exposures:
     depends_on:
       - ref('rpt_discount_effect')
       - ref('rpt_discount_typical')
+      - ref('rpt_discount_by_depth')
       - ref('rpt_discount_effect_daily')
       - ref('dim_game')
       - ref('fact_player_activity')
+      - ref('fact_player_activity_daily')
       - ref('fact_player_activity_monthly')
 
   - name: dashboard_unusual_days
@@ -136,3 +138,4 @@ exposures:
       - ref('mart_pipeline_health')
       - ref('mart_ingestion_daily')
       - ref('mart_dbt_run_history')
+      - ref('mart_pipeline_stage_runs')

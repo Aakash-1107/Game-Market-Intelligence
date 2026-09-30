@@ -3,7 +3,7 @@
 -- expected = active games x slots per day (hourly: 24, daily sources: 1). Active games = the tracked_games seed
 -- today (is_active), so days before a game was added read slightly below 100%.
 -- completeness_pct = succeeded slots / expected: hourly = distinct (game, clock hour) with a success;
--- daily sources = distinct games with a success that day.
+-- daily sources = distinct games with a success that day. games_attempted = distinct games with any log row that day.
 
 with log as (
     select
@@ -51,6 +51,7 @@ per_day as (
         count(*) filter (where is_failure)                                      as failures,
         sum(rows_affected)                                                      as rows_affected,
         count(distinct steam_app_id) filter (where is_success)                  as games_succeeded,
+        count(distinct steam_app_id)                                            as games_attempted,
         count(distinct (steam_app_id, date_trunc('hour', logged_at))) filter (where is_success) as game_hours_succeeded
     from log
     group by component, logged_date_utc
@@ -64,6 +65,7 @@ select
     coalesce(p.failures, 0)                                                     as failures,
     coalesce(p.rows_affected, 0)                                                as rows_affected,
     coalesce(p.games_succeeded, 0)                                              as games_succeeded,
+    coalesce(p.games_attempted, 0)                                              as games_attempted,
     a.active_games * c.slots_per_day                                            as expected,
     case when c.slots_per_day = 24 then coalesce(p.game_hours_succeeded, 0)
          else coalesce(p.games_succeeded, 0) end                                as succeeded_slots,

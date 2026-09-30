@@ -5,6 +5,8 @@ filter=recent (sorted by creation time) is required for stable cursor pagination
 filter=all sorts by helpfulness, returns a different sample every call and repeats reviews across
 pages. Fetches before 2026-09-28 used the default.
 Logs each game to ingestion_log on Neon.
+Every tracked game is released and has reviews, so an empty first page is Steam throttling (it can answer 200 with
+no reviews instead of 429): it is retried like a 429 and, if still empty, logged as a failure, not a skip.
 
 Run from project root:
     python src/ingestion/steam_reviews.py                  # all tracked games
@@ -113,8 +115,18 @@ def fetch_reviews_for_game(app_id: int) -> tuple[list[dict], dict]:
             "cursor": cursor,
         }
 
-        response = get_page(url, params, app_id)
-        data = response.json()
+        data = get_page(url, params, app_id).json()
+        # an empty first page is a soft rate limit (200 OK, no reviews): wait and retry like a 429
+        empty_retries = 0
+        while cursor == "*" and (data.get("success") != 1 or not data.get("reviews")):
+            if empty_retries == MAX_429_RETRIES:
+                raise RuntimeError(f"first page empty after {MAX_429_RETRIES} retries "
+                                   f"(success={data.get('success')}); likely Steam rate limiting")
+            empty_retries += 1
+            log.warning(f"  [{app_id}] first page empty, waiting {DEFAULT_429_WAIT_SECONDS} s "
+                        f"(retry {empty_retries}/{MAX_429_RETRIES})")
+            time.sleep(DEFAULT_429_WAIT_SECONDS)
+            data = get_page(url, params, app_id).json()
 
         # Capture summary from first page only
         if not query_summary:
@@ -122,7 +134,7 @@ def fetch_reviews_for_game(app_id: int) -> tuple[list[dict], dict]:
 
         reviews = data.get("reviews", [])
 
-        # Stop if no reviews returned
+        # Stop if no reviews returned (past the first page: the end of the reviews)
         if not reviews:
             break
 

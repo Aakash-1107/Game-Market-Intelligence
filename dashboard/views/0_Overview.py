@@ -28,9 +28,11 @@ down_row = comparable.loc[comparable["vs_last_month"].idxmin()]
 vs_help = f"Average of the last 7 days compared with the {month:%B %Y} monthly average."
 c1, c2, c3 = st.columns(3)  # columns (not a horizontal container) so the three cards share one height
 with c1:
-    st.metric("Playing right now", f"{snap['now_players'].sum():,.0f}", border=True, height="stretch",
-              help=f"Sum of the latest hourly reading across the {len(snap)} games we follow "
-                   f"({live_last:%a %d %b %Y, %H:%M}, Berlin time).")
+    st.metric(f"Latest reading: {live_last:%a %d %b, %H:%M}", f"{snap['now_players'].sum():,.0f}", border=True,
+              height="stretch",
+              help=f"Players online, summed over the latest hourly reading of the {len(snap)} games we follow "
+                   f"({live_last:%a %d %b %Y, %H:%M}, Berlin time). Updated whenever the warehouse is rebuilt; "
+                   "hourly readings are collected continuously.")
 with c2:
     st.metric(f"Biggest mover vs. {month:%B}", up_row["name"], f"{pct(up_row['vs_last_month'], signed=True)}",
               border=True, height="stretch", help=vs_help)

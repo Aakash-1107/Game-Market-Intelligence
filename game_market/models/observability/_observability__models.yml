@@ -72,6 +72,8 @@ models:
     description: >
       One row per monitored source per UTC day (days without attempts included, with zeros). expected = active games
       (tracked_games today) x slots per day (hourly 24, daily 1); completeness_pct = succeeded slots / expected.
+      games_attempted / games_succeeded = distinct games with any log row / a success that day (the Pipeline health
+      "Daily flow runs" table).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -100,3 +102,22 @@ models:
           - accepted_values:
               arguments:
                 values: ['success', 'warn', 'failed']
+
+  - name: mart_pipeline_stage_runs
+    description: >
+      One row per daily-flow run x stage, read live from Neon (a VIEW). Feeds the "Show log entries" expander on
+      the Pipeline health page: time, flow, stage, status, records in/out and the error message.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [run_id, stage]
+    columns:
+      - name: stage
+        data_tests:
+          - not_null
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['success', 'failed', 'skipped', 'running']

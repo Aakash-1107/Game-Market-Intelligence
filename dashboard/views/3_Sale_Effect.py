@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from common import (DAY_AXIS, FLAT, INK_2, OUTCOME, OUTCOME_ORDER, chart_block, coverage, game_image, middle_row,
-                    page_header, pct, players, sale_bands, scale_for, share_of, utc)
+                    page_header, pct, players, sale_bands, scale_for, utc)
 from db import query
 
 cov = coverage()
@@ -28,15 +28,36 @@ page_header(
 
 # ---- Header metrics: the typical discount, pooled median over clean discounts (rpt_discount_typical) -------------
 typ = query("""
-    select phase, median_lift, n_discounts, n_games
+    select phase, median_lift, mean_lift, n_discounts, n_games
     from reporting.rpt_discount_typical
     where discount_group = 'all' and phase in ('during', 'weeks_2_4_after')
 """).set_index("phase")
-typ_help = (f"Middle of {int(typ['n_discounts'].iloc[0])} discounts across {int(typ['n_games'].iloc[0])} games; "
-            "compared with each game's average daily players in the 14 days before that discount.")
+
+
+def typ_help(phase: str) -> str:
+    r = typ.loc[phase]
+    return (f"Median of {int(r.n_discounts)} discounts across {int(r.n_games)} games: half of the discounts rose "
+            "more, half less. Median rather than average because a few extreme cases (e.g. Witcher 3 in Dec 2019, "
+            f"the Netflix series) would pull an average up. Average: {pct(r.mean_lift, True)}.")
+
+
 m1, m2, _ = st.columns([1, 1, 2])
-m1.metric("During a discount", pct(typ.loc["during", "median_lift"], True), help=typ_help, border=True)
-m2.metric("2–4 weeks after", pct(typ.loc["weeks_2_4_after", "median_lift"], True), help=typ_help, border=True)
+m1.metric("During a discount", pct(typ.loc["during", "median_lift"], True), help=typ_help("during"), border=True)
+m2.metric("2–4 weeks after", pct(typ.loc["weeks_2_4_after", "median_lift"], True), help=typ_help("weeks_2_4_after"),
+          border=True)
+
+# ---- Depth KPIs: median bump during the discount by how deep it was (rpt_discount_by_depth) ----------------
+depth = query("""
+    select depth_label, n_discounts, median_lift_during, few_cases
+    from reporting.rpt_discount_by_depth order by bucket_order
+""")
+st.caption("**During a discount, by how deep it was** (median bump, same discounts as above)")
+for col, r in zip(st.columns([1, 1, 1, 1])[:3], depth.itertuples()):
+    value = pct(r.median_lift_during, True) if r.n_discounts else "–"
+    if r.few_cases:
+        col.markdown(f":gray[{r.depth_label}]  \n:gray[**{value}** · n = {r.n_discounts} · few cases]")
+    else:
+        col.markdown(f"{r.depth_label}  \n**{value}** :gray[· n = {r.n_discounts}]")
 
 # ---- Chart 1: what happened after the sale -----------------------------------------------------
 share = (clean.groupby("outcome").size().reindex(OUTCOME_ORDER).fillna(0).astype(int).reset_index(name="sales"))
@@ -71,7 +92,7 @@ def game_detail_section():
     games = (ep.groupby(["steam_app_id", "name", "header_image_url"]).size()
              .reset_index(name="sales").sort_values("name"))
     names = games["name"].tolist()
-    default = names.index("The Witcher 3: Wild Hunt - Complete Edition") if "The Witcher 3: Wild Hunt - Complete Edition" in names else 0
+    default = next((i for i, n in enumerate(names) if n.startswith("The Witcher 3")), 0)  # Steam renames editions
     c1, c2 = st.columns([3, 1])
     with c1:
         game = st.selectbox("Look at one game", names, index=default)
@@ -79,20 +100,29 @@ def game_detail_section():
         year = st.segmented_control("Period", ["2018", "2019", "2020", "All"], default="All", required=True)
     g = games[games["name"] == game].iloc[0]
 
+    # the continuous line: every complete 5-minute day of the game (same days rpt_discount_effect measures on)
+    days = query("""select activity_date, avg_players from marts.fact_player_activity_daily
+                    where steam_app_id = ? and data_resolution = '5min' and is_complete_day
+                    order by activity_date""", (int(g.steam_app_id),))
+    # the discount windows (14 days before to 28 days after each measured discount) with their baselines
     daily = query("""select sale_episode_key, activity_date, avg_players, baseline_avg,
                             sale_start, sale_end, max_discount_pct
                      from reporting.rpt_discount_effect_daily where steam_app_id = ? order by activity_date""",
                   (int(g.steam_app_id),))
     sales = query("""select sale_start, sale_end, max_discount_pct
                      from reporting.rpt_discount_effect where steam_app_id = ?""", (int(g.steam_app_id),))
+    days["activity_date"] = pd.to_datetime(days["activity_date"])
     for c in ["activity_date", "sale_start", "sale_end"]:
         daily[c] = pd.to_datetime(daily[c])
     if year != "All":
+        days = days[days["activity_date"].dt.year == int(year)]
         daily = daily[daily["activity_date"].dt.year == int(year)]
-    daily["in_players"] = [share_of(f"{t:%a %d %b %Y}", v, b, "the 14-day baseline")
-                           for t, v, b in zip(daily["activity_date"], daily["avg_players"], daily["baseline_avg"])]
     daily["discount"] = [f"{a:%d %b} – {e:%d %b %Y}, up to {p:.0f}% off"
                          for a, e, p in zip(daily["sale_start"], daily["sale_end"], daily["max_discount_pct"])]
+    daily["vs_base"] = [f"{players(b)} a day ({pct(v / b)} of it on this day)"
+                        for v, b in zip(daily["avg_players"], daily["baseline_avg"])]
+    # a day inside two overlapping windows lists both
+    windows = daily.groupby("activity_date").agg(discount=("discount", " | ".join), baseline=("vs_base", " | ".join))
     gep = ep[ep["steam_app_id"] == g.steam_app_id]
     bumped = int((gep["lift_during"] >= 0.05).sum())
     gmid = middle_row(gep, "lift_during")
@@ -108,16 +138,23 @@ def game_detail_section():
                    f"{pct(gmid.lift_during, True)}): {players(gmid.baseline_avg)} a day before → "
                    f"{players(gmid.during_avg)} during.")
     with right:
-        if daily.empty:
-            st.info("No measured discount for this game in the selected period.")
+        if days.empty:
+            st.info("No daily player data for this game in the selected period.")
         else:
-            x_dom = [daily["activity_date"].min(), daily["activity_date"].max()]
+            x_dom = [days["activity_date"].min(), days["activity_date"].max()]
+            # one row per calendar day: days without complete data become empty rows, so the line breaks there
+            # instead of joining across the gap
+            full = pd.date_range(x_dom[0], x_dom[1], freq="D")
+            n_missing = len(full) - days["activity_date"].nunique()
+            line_days = (days.set_index("activity_date").reindex(full).rename_axis("activity_date")
+                         .join(windows).reset_index())
             x = alt.X("activity_date:T", title=DAY_AXIS, scale=alt.Scale(domain=x_dom),
                       axis=alt.Axis(format="%b %Y", tickCount="month"))
-            lines = alt.Chart(daily).mark_line(color=FLAT, strokeWidth=1.6).encode(
+            lines = alt.Chart(line_days).mark_line(color=FLAT, strokeWidth=1.6).encode(
                 x=x, y=alt.Y("avg_players:Q", title="Players online (daily average)", axis=alt.Axis(format="~s")),
-                detail="sale_episode_key:N",
-                tooltip=[alt.Tooltip("in_players:N", title="Players online (daily average)"),
+                tooltip=[alt.Tooltip("activity_date:T", title="Day (UTC)", format="%a %d %b %Y"),
+                         alt.Tooltip("avg_players:Q", title="Players online (daily average)", format=",.0f"),
+                         alt.Tooltip("baseline:N", title="14-day baseline"),
                          alt.Tooltip("discount:N", title="Discount")])
             # each window's 100%: a dashed line at its baseline, spanning the days of that window shown
             base = (daily.groupby(["sale_episode_key", "baseline_avg", "discount"], as_index=False)
@@ -128,15 +165,18 @@ def game_detail_section():
                          alt.Tooltip("discount:N", title="Discount")])
             chart_block(
                 f"{game}: players rose during {bumped} of its {len(gep)} measurable discounts",
-                "Each blue line is one measured discount, from 2 weeks before it to 4 weeks after it ends; the dashed "
-                "line is its baseline, the average daily players in the 14 days before it. Yellow bands are Steam discounts.",
+                "The blue line is players online each day; yellow bands are Steam discounts. Each dashed line is one "
+                "measured discount's baseline, the average daily players in the 14 days before it.",
                 alt.layer(*sale_bands(sales, x_dom), base_lines, lines).resolve_scale(color="independent")
                 .properties(height=300),
                 "If discounts bring players, the blue line rises above its dashed baseline inside the yellow band. "
                 "Watch whether it drops straight back to the baseline afterwards, or stays up for a while.",
-                details=("The dashed baseline is the 100% behind the percentages on the left. Discounts we couldn't "
-                         "measure (another discount just before, or days missing) have a band but no line. Hover the "
-                         "blue line for players, the baseline and the % of the baseline on that day."),
+                details=("The dashed baseline is the 100% behind the percentages on the left; it spans the discount's "
+                         "window, from 2 weeks before it to 4 weeks after it ends. Discounts we couldn't measure "
+                         "(another discount just before, or days missing) have a band but no dashed line. Hover the "
+                         "blue line for players; inside a window also the baseline and the % of it on that day. "
+                         + (f"Gaps in the line are days without complete data ({n_missing} in this period)."
+                            if n_missing else "No days are missing in this period.")),
             )
 
 

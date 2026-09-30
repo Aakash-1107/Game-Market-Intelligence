@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from common import (COUNT_AXIS, HOVER_HINT, INK, INK_2, MUTED, PATTERN, PATTERN_ORDER, baseline_range, chart_block,
-                    coverage, highlight_lines, page_header, pct, scale_for, share_of, spread_labels)
+                    coverage, highlight_lines, page_header, pct, scale_for, share_of, spread_labels, view_toggle)
 from db import query
 
 cov = coverage()
@@ -61,12 +61,19 @@ def typical_curve_section():
     default = [g for g in ["ELDEN RING", "Baldur's Gate 3", "Subnautica", "Factorio", "Rust"] if g in set(settled["name"])]
     picked = st.multiselect("Compare games against the typical curve (up to 5 is easiest to read)",
                             sorted(curves["name"].unique()), default=default)
-    show_typical = st.checkbox("Show typical game", value=True)
+    c1, c2 = st.columns([1, 3], vertical_alignment="center")
+    with c1:
+        in_pct = view_toggle("lifecycle_view")
+    with c2:
+        # the typical game is a median of percentages: it has no player number, so players mode hides it
+        show_typical = st.checkbox("Show typical game", value=True, disabled=not in_pct) and in_pct
     sel = curves[curves["name"].isin(picked)]
+    val = "vs_peak" if in_pct else "avg_players"
 
     x = alt.X("month_idx:Q", title="Months since the game came out on Steam", scale=alt.Scale(domain=[0, 24]),
               axis=alt.Axis(values=list(range(0, 25, 3))))
-    y = alt.Y("vs_peak:Q", title="Players, as % of the launch peak", axis=alt.Axis(format="%"))
+    y = (alt.Y("vs_peak:Q", title="Players, as % of the launch peak", axis=alt.Axis(format="%")) if in_pct else
+         alt.Y("avg_players:Q", title="Players online (monthly average)", axis=alt.Axis(format="~s")))
     ref = alt.Chart(pd.DataFrame({"y": [1.0]})).mark_rule(color=MUTED).encode(y="y:Q")
     typical = alt.Chart(median_curve).mark_line(color=INK, strokeWidth=3.5).encode(
         x=x, y=y, tooltip=[alt.Tooltip("month_idx:Q", title="Month"),
@@ -79,11 +86,12 @@ def typical_curve_section():
         tooltip=[alt.Tooltip("name:N", title="Game"),
                  alt.Tooltip("in_players:N", title="Players online (monthly average)"),
                  alt.Tooltip("pattern:N", title="Pattern")])
-    ends = sel.loc[sel.groupby("name")["month_idx"].idxmax(), ["name", "month_idx", "vs_peak"]]
+    ends = sel.loc[sel.groupby("name")["month_idx"].idxmax(), ["name", "month_idx", val]]
     if show_typical:
         ends = pd.concat([ends, median_curve.loc[median_curve["month_idx"] == 24, ["month_idx", "vs_peak"]].assign(name="Typical game")])
-    y_top = max(1.0, sel["vs_peak"].max() if not sel.empty else 1.0, median_curve["vs_peak"].max())
-    ends = spread_labels(ends, "vs_peak", min_gap=y_top * 0.055)
+    y_top = (max(1.0, sel["vs_peak"].max() if not sel.empty else 1.0, median_curve["vs_peak"].max()) if in_pct
+             else (sel["avg_players"].max() if not sel.empty else 1.0))
+    ends = spread_labels(ends, val, min_gap=y_top * 0.055)
     ends["weight"] = ends["name"].eq("Typical game").map({True: "bold", False: "normal"})
     end_labels = alt.Chart(ends).mark_text(align="left", dx=6, fontSize=11).encode(
         x=x, y=alt.Y("label_y:Q"), text="name:N",
@@ -94,13 +102,16 @@ def typical_curve_section():
         f"then levels off at around {pct(plateau)}",
         "**100% = the game's busiest month within its first four months (month 0 to month 3).** "
         f"Black line = the typical game (median of {n_settled} games); thin lines = the games you picked.",
-        alt.layer(ref, *highlight_lines(lines, "pattern"), *([typical] if show_typical else []), end_labels)
+        alt.layer(*([ref] if in_pct else []), *highlight_lines(lines, "pattern"), *([typical] if show_typical else []),
+                  end_labels)
         .properties(height=420),
         "The launch rush is short. Most players who show up in the first weeks are gone within a few months. "
         "After that the curve flattens: the players who are left tend to stay. The small bumps at 12 and 24 months "
         "line up with the game's anniversary, when many games run discounts or release updates.",
-        baseline=baseline_range(settled.drop_duplicates("name"), "launch_peak_avg", "name", "Launch peak (100%)",
-                                f"the {n_settled} games behind the typical game"),
+        baseline=(baseline_range(settled.drop_duplicates("name"), "launch_peak_avg", "name", "Launch peak (100%)",
+                                 f"the {n_settled} games behind the typical game") if in_pct else
+                  "Showing players: the y-axis fits the games you picked. The typical game is hidden, because it is "
+                  "a median of percentages and has no player number."),
         details=(f"{MONTH_0} The typical game is the median across the {n_settled} games with at least a year of "
                  f"history, month by month; later months have fewer games ({int(mc.index.max())} months after launch "
                  f"has {int(median_curve['games'].iloc[-1])}). Thin lines are coloured by the pattern the game ends up "

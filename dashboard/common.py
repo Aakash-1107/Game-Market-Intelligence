@@ -314,6 +314,15 @@ def spread_labels(ends: pd.DataFrame, ycol: str, min_gap: float) -> pd.DataFrame
     return out
 
 
+VIEW_PCT, VIEW_PLAYERS = "% of own baseline", "Players"
+
+
+def view_toggle(key: str) -> bool:
+    """Players / % switch above an indexed chart. Returns True for % of own baseline (the default)."""
+    return st.segmented_control("Show", [VIEW_PCT, VIEW_PLAYERS], default=VIEW_PCT, required=True, key=key,
+                                label_visibility="collapsed") == VIEW_PCT
+
+
 def pct(x: float, signed: bool = False) -> str:
     return f"{x * 100:+.0f}%" if signed else f"{x * 100:.0f}%"
 
