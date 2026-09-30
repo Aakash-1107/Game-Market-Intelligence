@@ -4,6 +4,8 @@ import streamlit as st
 from common import PROJECT_TITLE
 
 st.set_page_config(page_title=PROJECT_TITLE, page_icon=":material/sports_esports:", layout="wide")
+# Full menu (toolbarMode = "developer" in .streamlit/config.toml) without the Deploy button: this app runs locally.
+st.html("<style>[data-testid='stAppDeployButton'] { display: none; }</style>")
 
 pages = [
     st.Page("views/0_Overview.py", title="Market overview", icon=":material/home:", default=True),

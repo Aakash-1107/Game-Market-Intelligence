@@ -96,7 +96,10 @@ tip = [alt.Tooltip("activity_date:T", title="Day (UTC)", format="%a %d %b %Y"),
        alt.Tooltip("succeeded_slots:Q", title="Game-hours collected"), alt.Tooltip("expected:Q", title="Expected"),
        alt.Tooltip("failures:Q", title="Failed requests")]
 line = alt.Chart(hourly).mark_line(point=True, strokeWidth=1.8, color=FLAT).encode(
-    x=alt.X("activity_date:T", title=DAY_AXIS, axis=alt.Axis(format="%d %b")),
+    # a label on every day (angled so they fit at half width), so the last point always has its date under it
+    x=alt.X("activity_date:T", title=DAY_AXIS,
+            axis=alt.Axis(format="%d %b", tickCount={"interval": "day", "step": 1}, labelAngle=-45,
+                          labelOverlap=False)),
     y=alt.Y("completeness_pct:Q", title="Completeness", scale=alt.Scale(domain=[0, 100]), axis=alt.Axis(format=".0f")),
     tooltip=tip)
 worst = hourly.sort_values("completeness_pct").iloc[0] if len(hourly) else None

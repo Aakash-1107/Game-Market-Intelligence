@@ -8,5 +8,6 @@ backgroundColor = "#f7f6f2"
 secondaryBackgroundColor = "#ecebe4"
 
 [client]
-# Viewer-only menu for the demo: hides Deploy / Rerun / Clear cache. Restart the app to pick up new data.
-toolbarMode = "minimal"
+# Full menu (Rerun, Clear cache, Settings) so new data can be picked up without a restart. The Deploy button
+# is hidden with CSS in dashboard/home.py (Streamlit has no setting for that alone).
+toolbarMode = "developer"
