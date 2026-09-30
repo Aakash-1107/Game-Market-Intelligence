@@ -17,6 +17,14 @@ game_market:
       extensions:
         - httpfs
         - postgres
+      # DuckDB memory cap and spill directory. config_options, not settings: dbt-duckdb re-runs `settings` as SET
+      # before every model and test, and a second SET temp_directory fails once the first spill happened ("Cannot
+      # switch temporary directory after the current one has been used"; reverted for that on 2026-09-28).
+      # config_options are applied once, when the database is opened. Paths are relative to game_market/.
+      # 1GB was too small for game_coverage (2026-09-28), hence 2GB.
+      config_options:
+        memory_limit: "{{ env_var('DUCKDB_MEMORY_LIMIT', '') or '2GB' }}"
+        temp_directory: "{{ env_var('DUCKDB_TEMP_DIRECTORY', '') or '../data/duckdb_tmp' }}"
       settings:
         s3_region: "{{ env_var('AWS_REGION') }}"
         s3_access_key_id: "{{ env_var('AWS_ACCESS_KEY') }}"
@@ -33,6 +41,9 @@ game_market:
       type: duckdb
       path: "{{ env_var('DUCKDB_PATH', '../data/game_market.duckdb') }}"
       threads: 1
+      config_options:            # see dev
+        memory_limit: "{{ env_var('DUCKDB_MEMORY_LIMIT', '') or '2GB' }}"
+        temp_directory: "{{ env_var('DUCKDB_TEMP_DIRECTORY', '') or '../data/duckdb_tmp' }}"
       extensions:
         - httpfs
       settings:

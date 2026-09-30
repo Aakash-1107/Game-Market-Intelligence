@@ -48,16 +48,23 @@ m2.metric("2–4 weeks after", pct(typ.loc["weeks_2_4_after", "median_lift"], Tr
 
 # ---- Depth KPIs: median bump during the discount by how deep it was (rpt_discount_by_depth) ----------------
 depth = query("""
-    select depth_label, n_discounts, median_lift_during, few_cases
+    select depth_bucket, n_discounts, median_lift_during, few_cases
     from reporting.rpt_discount_by_depth order by bucket_order
-""")
-st.caption("**During a discount, by how deep it was** (median bump, same discounts as above)")
-for col, r in zip(st.columns([1, 1, 1, 1])[:3], depth.itertuples()):
-    value = pct(r.median_lift_during, True) if r.n_discounts else "–"
-    if r.few_cases:
-        col.markdown(f":gray[{r.depth_label}]  \n:gray[**{value}** · n = {r.n_discounts} · few cases]")
-    else:
-        col.markdown(f"{r.depth_label}  \n**{value}** :gray[· n = {r.n_discounts}]")
+""").set_index("depth_bucket")
+DEPTH_TITLES = {"under_50": "Under 50% off", "50_to_74": "50–74% off", "75_or_more": "75% off or more"}
+deep, shallower = depth.loc["75_or_more", "median_lift_during"], depth.drop("75_or_more")["median_lift_during"].max()
+if deep - shallower <= 0.10:  # the deepest bucket is at most ~10 points above the others
+    st.markdown("Deeper discounts do not bring proportionally more players.")
+else:
+    st.markdown(f"Deeper discounts bring more players: {pct(deep, True)} during discounts of 75% or more, "
+                f"against at most {pct(shallower, True)} for smaller ones.")
+for col, (bucket, title) in zip(st.columns([1, 1, 1, 1])[:3], DEPTH_TITLES.items()):
+    r = depth.loc[bucket]
+    with col.container(border=True):
+        st.metric(f":gray[{title}]" if r.few_cases else title,
+                  pct(r.median_lift_during, True) if r.n_discounts else "–",
+                  help="Median change in players during the discount, against the 14 days before it.")
+        st.caption(f"based on {int(r.n_discounts)} discounts" + (" · few cases" if r.few_cases else ""))
 
 # ---- Chart 1: what happened after the sale -----------------------------------------------------
 share = (clean.groupby("outcome").size().reindex(OUTCOME_ORDER).fillna(0).astype(int).reset_index(name="sales"))

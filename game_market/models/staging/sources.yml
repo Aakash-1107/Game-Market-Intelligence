@@ -31,9 +31,14 @@ sources:
             description: "Application name as returned by Steam"
           
       - name: app_details
-        description: "Raw Steam appdetails JSON, one file per game per ingestion run"
+        description: >
+          Raw Steam appdetails JSON, one file per game per ingestion run. Read with explicit columns, so DuckDB
+          does no schema inference: inferring the full nested Steam response across all files ran out of memory
+          (2026-10-01, 286 files / 8.7 MB, "Allocation failure" at bind time; a memory_limit didn't help).
+          `data` stays JSON and staging extracts the fields. struct_pack instead of a {...} literal because
+          dbt-duckdb formats external_location with str.format_map (see price_history).
         meta:
-          external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/app_details/*/*/*/app_details_*.json', union_by_name = true, ignore_errors = true)"
+          external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/app_details/*/*/*/app_details_*.json', columns = struct_pack(steam_app_id := 'BIGINT', fetched_at_utc := 'TIMESTAMP', data := 'JSON'), filename = true)"
         columns:
           - name: steam_app_id
             description: "Steam App ID — matches game_source_mapping"
@@ -58,6 +63,14 @@ sources:
             description: "Lifetime review totals for the game — used by stg_steam__reviews_summary"
           - name: reviews
             description: "Array of individual reviews — unnested in stg_steam__reviews"
+
+      - name: reviews_summary
+        description: >
+          The same raw review files as `reviews`, read with explicit columns and without the reviews array,
+          for stg_steam__reviews_summary (latest file per game only). No schema inference, and the large
+          reviews array is never parsed.
+        meta:
+          external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/reviews/*/*/*/*reviews_*.json', columns = struct_pack(steam_app_id := 'BIGINT', fetched_at := 'TIMESTAMP', query_summary := 'JSON'), filename = true)"
 
   - name: itad_raw
     description: "Raw ITAD price history JSON files from S3"

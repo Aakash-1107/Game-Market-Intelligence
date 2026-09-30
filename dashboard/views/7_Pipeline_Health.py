@@ -59,6 +59,11 @@ for i, r in health.iterrows():
             st.caption(f"Latest attempt {r.last_status.replace('_', ' ')}"
                        + (f": {str(r.last_error)[:220]}" if pd.notna(r.last_error) else ""))
 
+st.caption("Not monitored stage by stage: the hourly player-count flow (Prefect managed pool). Its health comes from "
+           "the ingestion log (one row per game per hour) and data freshness.  \n"
+           "The tables below cover the daily flow only: its stage runs (log entries), games collected per source "
+           "(full daily flow runs) and its dbt builds (latest warehouse builds).")
+
 with st.expander("Show log entries"):
     log = query_live("""
         select started_at, flow_name, stage, status, records_in, records_out, error_message
@@ -95,32 +100,73 @@ line = alt.Chart(hourly).mark_line(point=True, strokeWidth=1.8, color=FLAT).enco
     y=alt.Y("completeness_pct:Q", title="Completeness", scale=alt.Scale(domain=[0, 100]), axis=alt.Axis(format=".0f")),
     tooltip=tip)
 worst = hourly.sort_values("completeness_pct").iloc[0] if len(hourly) else None
-chart_block(
-    "Hourly collection" if worst is None else
-    f"Hourly collection: lowest day {worst.activity_date:%d %b} at {worst.completeness_pct:.0f}%",
-    "Each point is one UTC day of the hourly player-count collector. **100% = every active game, every hour.**",
-    line.properties(height=260),
-    "A dip is a collector outage or rate limiting. The daily sources are not on this chart: they only run when the "
-    "daily flow runs (table below).",
-    details=(f"100% is {int(hourly['expected'].iloc[-1]) if len(hourly) else 0} game-hours a day (active games × 24). "
-             "Today is left out until the UTC day is complete. Days without any attempt count as 0%. Games added recently make earlier days read slightly below 100%."),
-)
+left, right = st.columns(2, gap="large")
+with left:
+    chart_block(
+        "Hourly collection" if worst is None else
+        f"Hourly collection: lowest day {worst.activity_date:%d %b} at {worst.completeness_pct:.0f}%",
+        "Each point is one UTC day of the hourly player-count collector. **100% = every active game, every hour.**",
+        line.properties(height=260),
+        "A dip is a collector outage or rate limiting. The daily sources are not on this chart: they only run when the "
+        "daily flow runs (next to it).",
+        details=(f"100% is {int(hourly['expected'].iloc[-1]) if len(hourly) else 0} game-hours a day (active games × 24). "
+                 "Today is left out until the UTC day is complete. Days without any attempt count as 0%. "
+                 "Games added recently make earlier days read slightly below 100%."),
+    )
 
-# ---- Daily flow runs: one row per UTC date on which the daily flow ran ---------------------------------
-# A flow run touches all four daily sources; days where only one source was fetched by hand are not flow runs.
-st.markdown("##### Daily flow runs")
+# ---- Daily flow runs: chart (every UTC date on which at least one daily source ran) + table (full flow runs) ----
 DAILY = {"prices": "Prices (ITAD)", "app_details": "Game details", "reviews": "Player reviews",
          "steamcharts_monthly": "Monthly players"}
-d = query("""
-    select component, activity_date, games_succeeded, games_attempted
+src = query("""
+    select component, activity_date, games_succeeded, games_attempted, expected, completeness_pct
     from observability.mart_ingestion_daily
     where component in ('prices', 'app_details', 'reviews', 'steamcharts_monthly') and games_attempted > 0
+    order by activity_date
 """)
-d = d[d.groupby("activity_date")["component"].transform("nunique") == len(DAILY)]
+src["source"] = src["component"].map(DAILY)
+src["day"] = pd.to_datetime(src["activity_date"]).dt.strftime("%a %d %b")
+src["collected"] = [f"{s_} / {a_} games" for s_, a_ in zip(src["games_succeeded"], src["games_attempted"])]
+# Legend like Plotly's: click toggles a source off/on, double-click isolates it (double-click it again for all).
+# `shown` starts with every source and a click toggles one out or back in, so Vega-Lite's legend fading (entries
+# outside a legend selection are faded) marks exactly the hidden sources. A double-click also fires two clicks,
+# which toggle the source out and back in, so the two parameters don't interfere.
+shown = alt.selection_point(name="shown", fields=["source"], bind="legend", toggle="true", clear=False,
+                            value=[{"source": v} for v in DAILY.values()])
+isolated = alt.selection_point(name="isolated", fields=["source"], bind=alt.LegendStreamBinding(legend="dblclick"),
+                               toggle="true", clear=False)
+visible = {"and": [{"param": "shown", "empty": False}, {"param": "isolated"}]}
+bars = alt.Chart(src).mark_bar(cornerRadiusEnd=2).encode(
+    x=alt.X("day:O", title=DAY_AXIS, sort=src["day"].unique().tolist(), axis=alt.Axis(labelAngle=0)),
+    xOffset=alt.XOffset("source:N", sort=list(DAILY.values())),
+    y=alt.Y("completeness_pct:Q", title="% of active games collected", scale=alt.Scale(domain=[0, 100]),
+            axis=alt.Axis(format=".0f")),
+    color=alt.Color("source:N", title=None, sort=list(DAILY.values())),
+    opacity={"condition": {"test": visible, "value": 1}, "value": 0.1},
+    tooltip=[alt.Tooltip("source:N", title="Source"),
+             alt.Tooltip("activity_date:T", title="Day (UTC)", format="%a %d %b %Y"),
+             alt.Tooltip("collected:N", title="Collected / attempted"),
+             alt.Tooltip("completeness_pct:Q", title="% of active games", format=".1f")],
+).add_params(shown, isolated)
+with right:
+    chart_block(
+        "Daily flow runs",
+        "One group per UTC day on which a daily source ran, one bar per source. **100% = every active game collected.**",
+        bars.properties(height=260),  # the chart is fitted to this height, legend included: same as the hourly chart
+        "Days without a run have no bars: the daily flow is started by hand, so a missing day is not an outage. "
+        "A short bar means some games failed, or only some were fetched.",
+        details=(f"100% = {int(src['expected'].iloc[-1]) if len(src) else 0} active games. Days where only one "
+                 "source ran are manual runs or reruns of a few games (e.g. reviews for 8 games on 30 Sep). "
+                 "Click a source in the legend to hide or show it; double-click to show only that source "
+                 "(double-click it again to show all)."),
+    )
+
+# the table: days on which the full daily flow ran (all four sources); one-source days are manual runs
+st.markdown("##### Full daily flow runs")
+d = src[src.groupby("activity_date")["component"].transform("nunique") == len(DAILY)]
 if d.empty:
     st.info("The daily flow has not run yet.")
 else:
-    d["cell"] = d["games_succeeded"].astype(str) + " / " + d["games_attempted"].astype(str)
+    d = d.assign(cell=d["games_succeeded"].astype(str) + " / " + d["games_attempted"].astype(str))
     t = d.pivot(index="activity_date", columns="component", values="cell")[list(DAILY)].rename(columns=DAILY)
     missing = (d["games_attempted"] - d["games_succeeded"]).groupby(d["activity_date"]).sum()
     t["status"] = missing.map(lambda m: "Success" if m == 0 else f"Partial ({m} game{'s' if m > 1 else ''} missing)")
@@ -128,9 +174,8 @@ else:
     st.dataframe(t, hide_index=True, column_config={
         "activity_date": st.column_config.DateColumn("Run date (UTC)", format="ddd D MMM YYYY"),
         "status": "Overall status"})
-    st.caption("Games collected / attempted per source that day (all runs of the day together). Days without a run "
-               "are not listed: the daily flow is started by hand (it exists since 28 Sep 2026), so a missing day is "
-               "not an outage. Each run's stages are under *Show log entries* above.")
+    st.caption("Games collected / attempted per source that day (all runs of the day together). Only days on which "
+               "all four sources ran. Each run's stages are under *Show log entries* above.")
 
 # ---- dbt builds --------------------------------------------------------------------------------------
 runs = query_live("""
@@ -154,5 +199,3 @@ else:
         "node_time_s": st.column_config.NumberColumn("Build time (s)", format="%.0f"),
         "invocation_id": "dbt invocation",
     })
-st.caption("Not monitored stage by stage: the hourly player-count flow (Prefect managed pool). Its health comes from "
-           "the ingestion log (one row per game per hour) and data freshness.")

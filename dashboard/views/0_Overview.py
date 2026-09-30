@@ -16,7 +16,8 @@ project_header(f"What happens to PC games after they come out? This dashboard fo
 with st.container(horizontal=True):  # wraps to 2x2 on narrow windows instead of truncating the numbers
     st.metric("Games followed", f"{k.games}", help=f"{k.free_games} of them are free-to-play.", border=True)
     st.metric("Player history since", f"{k.first_month:%Y}", help="Monthly player numbers go back this far.", border=True)
-    st.metric("Player-count readings", f"{k.readings / 1e6:.1f} million", help="Individual snapshots of how many people were playing.", border=True)
+    st.metric("Player-count readings", f"{k.readings / 1e6:.1f} million", help="Each reading = the number of players online for one game at one moment "
+              "(every 5 minutes 2017–2020, hourly since Sept 2026).", border=True)
     st.metric("Price changes tracked", f"{k.price_changes:,}", help=f"Across {k.shops} online shops, including Steam.", border=True)
 
 # ---- Right now: the live hourly feed ------------------------------------------------------------

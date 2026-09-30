@@ -1,7 +1,21 @@
 with raw as (
 
-    select *
+    select steam_app_id, fetched_at_utc, data, filename
     from {{ source('steam_raw', 'app_details') }}
+    where data is not null
+
+),
+
+-- Grain: one row per game, latest fetch wins. Raw is one file per game per run, so the newest file per
+-- game is picked here, before any field is extracted (only one JSON document per game gets parsed).
+latest as (
+
+    select *
+    from raw
+    qualify row_number() over (
+        partition by cast(steam_app_id as integer)
+        order by fetched_at_utc desc, filename desc
+    ) = 1
 
 ),
 
@@ -69,24 +83,7 @@ extracted as (
             ) t(g)
         )                                           as steam_genres
 
-    from raw
-    where data is not null
-
-),
-
-deduplicated as (
-
-    select *
-    from (
-        select
-            *,
-            row_number() over (
-                partition by steam_app_id
-                order by fetched_at_utc desc
-            ) as rn
-        from extracted
-    ) ranked
-    where rn = 1
+    from latest
 
 )
 
@@ -108,4 +105,4 @@ select
     publishers,
     steam_genres,
     fetched_at_utc
-from deduplicated
+from extracted
