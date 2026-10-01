@@ -88,6 +88,12 @@ models:
         data_tests:
           - not_null
           - unique
+      - name: game_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: game_key
 
   - name: fact_price_snapshot
     description: >
@@ -108,6 +114,10 @@ models:
       - name: game_key
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_game')
+                field: game_key
       - name: steam_app_id
         data_tests:
           - not_null

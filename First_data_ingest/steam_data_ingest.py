@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -27,6 +28,31 @@ AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
 AWS_REGION     = os.getenv("AWS_REGION", "eu-central-1")
 AWS_BUCKET     = os.getenv("AWS_BUCKET", "game-market-raw")
 
+# per-request retries: timeouts, 429 and 5xx are retried after 1 s, 2 s, 4 s; other errors fail at once
+RETRY_DELAYS_SECONDS = (1, 2, 4)
+
+
+def _is_retryable(e: Exception) -> bool:
+    if isinstance(e, requests.Timeout):
+        return True
+    status = getattr(getattr(e, "response", None), "status_code", None)
+    return status == 429 or (status is not None and 500 <= status < 600)
+
+
+def get_with_retries(appid: int) -> requests.Response:
+    """GET the player count for one game, retrying transient failures. Raises the last error."""
+    for attempt in range(len(RETRY_DELAYS_SECONDS) + 1):
+        try:
+            response = requests.get(URL, params={"appid": appid}, timeout=10)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as e:
+            if attempt == len(RETRY_DELAYS_SECONDS) or not _is_retryable(e):
+                raise
+            delay = RETRY_DELAYS_SECONDS[attempt]
+            print(f"Retrying appid {appid} in {delay} s (attempt {attempt + 2}): {e}")
+            time.sleep(delay)
+
 
 def get_current_player_counts():
     """Fetch live player count for all games. Returns (records, events)."""
@@ -37,8 +63,7 @@ def get_current_player_counts():
 
     for appid, name in GAMES.items():
         try:
-            response = requests.get(URL, params={"appid": appid}, timeout=10)
-            response.raise_for_status()
+            response = get_with_retries(appid)
             player_count = response.json().get("response", {}).get("player_count", None)
 
             records.append({
@@ -179,7 +204,7 @@ def main():
             print("No DATABASE_URL — skipping ingestion_log.")
 
 
-@flow
+@flow(retries=1, retry_delay_seconds=120)
 def steam_player_count_ingest():
     main()
 
