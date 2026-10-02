@@ -1,5 +1,0 @@
-# Local infrastructure configuration.
-# RustFS decommissioned 2026-09-20 — replaced by AWS S3.
-# Reserved for future local services if needed.
-
-services: {}

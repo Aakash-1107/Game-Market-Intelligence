@@ -1,0 +1,517 @@
+# Runbook: using and operating the project
+
+This guide has two jobs:
+
+- **Part A** takes someone from a fresh clone to their own data and their own SQL analysis, step by step.
+- **Parts B to E** cover running the pipeline day to day: what runs where, how to check it, routine tasks, what to do
+  when an external source misbehaves, and how to rebuild.
+
+Nothing here means the project is broken. The pipeline depends on rate-limited public APIs, so it is built to notice
+and report problems, and Part C lists the known situations and what to do about each.
+
+For design and rationale see [docs/PIPELINE.md](docs/PIPELINE.md) and [docs/DATA_MODEL.md](docs/DATA_MODEL.md). For
+metric definitions see [docs/ANALYTICS.md](docs/ANALYTICS.md).
+
+---
+
+# Part A. From clone to your own analysis
+
+## A1. What you need
+
+| Need | Why | Cost |
+|---|---|---|
+| Python 3.11 or newer, Git | Run the code | free |
+| An AWS S3 bucket and an IAM user with access to that bucket | All raw data lands here and dbt reads from it | free tier is enough at this scale |
+| An IsThereAnyDeal API key (https://isthereanydeal.com/dev/app/) | Price and discount history | free |
+| A Postgres database (Neon free tier, or a local Postgres) | Pipeline logs and the Pipeline health page. Optional: without it you still get all analytical models | free |
+| Nothing for Steam | The Steam endpoints used here need no key | free |
+
+## A2. Install and configure
+
+```bash
+git clone https://github.com/Aakash-1107/Game-Market-Intelligence.git
+cd Game-Market-Intelligence
+python -m venv .venv
+.venv\Scripts\Activate.ps1          # Windows PowerShell; macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+pip install dbt-duckdb streamlit prefect
+cp .env.example .env                # PowerShell: Copy-Item .env.example .env
+```
+
+Fill in `.env`: `AWS_ACCESS_KEY`, `AWS_SECRET_KEY`, `AWS_REGION`, `AWS_BUCKET`, `ITAD_API_KEY`, and `DATABASE_URL`
+if you use the log database. Every variable is explained in `.env.example`. Never commit `.env`.
+
+## A3. Create the log tables (skip if you have no log database)
+
+```bash
+psql "$DATABASE_URL" -f sql/ddl/ingestion_log.sql
+python -m src.observability.run_log --create
+```
+
+Expected: no error. The second command prints `tables created`.
+
+## A4. Provide the one-time inputs
+
+Three inputs cannot be fetched on a schedule. Upload them to your bucket **before the first dbt build**, because the
+staging models that read them fail while the files are missing.
+
+| Input | Upload to (in your bucket) | Where to get it | Notes |
+|---|---|---|---|
+| Steam app list | `raw/steam/app_list/steam_app_list.csv` | Steam's app catalogue (`IStoreService/GetAppList`, needs your Steam Web API key) | CSV with a header and two columns, `appid` and `name`. `dim_game` uses it only as a name fallback, so a short CSV listing your own games is enough. No script in this repository creates it |
+| Kaggle monthly players | `raw/kaggle/steamcharts_monthly_players/steamcharts.csv` | Kaggle dataset "Steam Monthly Average Players" by Victor Laputsky (CC0) | Columns used: `month, avg_players, gain, gain_percent, peak_players, name, steam_appid`. Fills monthly gaps and cross-checks SteamCharts |
+| 5-minute backfill | created by the script below | Mendeley dataset "Steam Games Dataset: Player count history, Price history and data about games" (DOI 10.17632/ycy3sy3vj2.1), file `PlayerCountHistoryPart1` | Needed for Q3 and Q4. Set `PLAYER_COUNT_HISTORY_PART1_DIR` in `.env` to the unzipped folder of `{app_id}.csv` files |
+
+Upload with the AWS CLI or the S3 console, for example:
+
+```bash
+aws s3 cp steam_app_list.csv s3://$AWS_BUCKET/raw/steam/app_list/steam_app_list.csv
+aws s3 cp steamcharts.csv   s3://$AWS_BUCKET/raw/kaggle/steamcharts_monthly_players/steamcharts.csv
+```
+
+The backfill runs after you have chosen your games (A5):
+
+```bash
+python src/ingestion/backfill_player_counts.py          # all active games found in the dataset
+```
+
+Expected: one line per game, `success` for games in the dataset and `no_coverage` for the rest. The staging model
+reads every Parquet file under `raw/steam/player_counts/backfill/`, and DuckDB raises an error when a path matches no
+files, so **at least one of your games must be in the Mendeley dataset** for the first build to work.
+
+## A5. Choose your games
+
+The project tracks 55 games by default. The list is one file: `game_market/seeds/tracked_games.csv`.
+
+```csv
+steam_app_id,game_name,is_active
+730,Counter-Strike 2,true
+```
+
+Keep the default list, or replace it with your own Steam App IDs (the number in a game's Steam store URL).
+`game_name` is only a label. `is_active=false` stops collecting a game but keeps its history. If the ITAD lookup
+picks the wrong game, add a row to `game_market/seeds/manual_id_overrides.csv` (source `itad`, status
+`matched_manual`, the ITAD ID in `source_game_id`); overrides always win.
+
+## A6. Collect the data
+
+Order matters. Keep the dashboard closed during this step.
+
+```bash
+# 1. One hourly player-count reading (also creates the first file the daily flow checks for)
+python First_data_ingest/steam_data_ingest.py
+
+# 2. The daily flow: ITAD IDs, prices, app details, reviews, SteamCharts, freshness check, then dbt build
+python flows/daily_market_refresh.py
+```
+
+The daily flow needs a hourly file no older than 3 hours (`FRESHNESS_MAX_AGE_HOURS`), so run it right after step 1.
+The first full run takes roughly 25 to 30 minutes, mostly Steam reviews, which Steam throttles on purpose.
+
+Expected at the end of the log: every task completed, and `dbt_build` with `PASS=... WARN=0 ERROR=0`.
+
+To keep collecting, run step 1 every hour and the daily flow once a day:
+
+- **Hourly:** deploy it to Prefect (section B3.7), or schedule the same command with Windows Task Scheduler or cron.
+- **Daily:** `python flows/daily_market_refresh.py --serve` keeps a local scheduler running (07:00 Europe/Berlin), or
+  start the command by hand.
+
+## A7. What you have after the first run
+
+| Data | Coverage | Available |
+|---|---|---|
+| Price and discount history | back to 2012 where ITAD has it | immediately |
+| Monthly players (SteamCharts, Kaggle fills gaps) | back to mid-2012 | immediately |
+| Game details, genres, developers, review totals | current | immediately |
+| Newest 1,000 English reviews per game | recent | immediately |
+| 5-minute players | Dec 2017 to Aug 2020, games in the Mendeley dataset only | after A4 backfill |
+| Hourly players | from the day you start collecting | grows every hour |
+
+Which questions work when: Q1 (life after launch) and Q2 (activity health) need only monthly data, so they work
+immediately. Q3 (discounts) and Q4 (unusual days) need 5-minute data plus price history, so they cover the games in
+the Mendeley dataset. Your own hourly series becomes useful for your own analysis after a few weeks.
+
+## A8. Check the result
+
+```bash
+cd game_market
+dbt test                                           # all tests should pass
+dbt show --inline "select count(*) as games from {{ ref('dim_game') }}"
+dbt show --inline "select * from {{ ref('game_coverage') }}"    # what each game received (full build only)
+```
+
+If something is red, jump to Part C. The dashboard also shows a **Pipeline health** page.
+
+## A9. Query your data
+
+**Where it is.** dbt builds one DuckDB file: `data/game_market.duckdb` in the repository root. It is a local file, not
+a server. Schemas and what to use them for:
+
+| Schema | Use it for |
+|---|---|
+| `marts` | **Start here.** `dim_game` plus the fact tables. General purpose, clean grains |
+| `reporting` | Ready-made answers to Q1 to Q4 (`rpt_*`) |
+| `observability` | Pipeline health and per-game coverage |
+| `staging`, `intermediate` | Internals. Read them to understand a number, not to build on |
+
+Main tables in `marts`:
+
+| Table | One row is | Key columns |
+|---|---|---|
+| `dim_game` | a game | `steam_app_id`, `name`, `release_date`, `steam_genres`, `developers`, `publishers`, `review_positivity_pct` |
+| `fact_player_activity_daily` | a game on a UTC day | `activity_date`, `avg_players`, `peak_players`, `data_resolution`, `is_complete_day` |
+| `fact_player_activity_monthly` | a game in a month | `activity_month`, `avg_players`, `peak_players`, `source` |
+| `fact_player_activity` | one player-count reading | `recorded_at`, `player_count`, `data_resolution` |
+| `fact_price_daily` | a game on a day (Steam price, forward-filled) | `price_date`, `price_amount`, `regular_amount`, `discount_pct`, `is_on_sale` |
+| `fact_discount_episode` | one Steam discount period | `sale_start`, `sale_end`, `sale_days`, `max_discount_pct` |
+| `fact_price_snapshot` | one ITAD price event, any shop | `observed_at`, `shop_id`, `price_amount`, `discount_pct` |
+| `fact_reviews` | one Steam review | `voted_up`, `playtime_at_review_minutes`, `review_created_at` |
+
+**Connect.** Open the file read-only so you cannot change it by accident:
+
+```python
+import duckdb
+
+con = duckdb.connect("data/game_market.duckdb", read_only=True)
+df = con.sql("select name, release_date from marts.dim_game order by release_date").df()
+print(df.head())
+```
+
+The DuckDB command-line tool works as well (`duckdb data/game_market.duckdb -readonly`; install it separately), and
+the dashboard's **Game explorer** page is the point-and-click option. DuckDB lets only one process write to the file:
+while `dbt build` or the daily flow runs, work on a copy (`copy data\game_market.duckdb data\analysis.duckdb`).
+
+**Rules that keep your numbers right.**
+
+- Days are **UTC** days everywhere.
+- Player data comes at three resolutions (`5min`, `hourly`, `monthly`). Do not average across them in one query:
+  filter on `data_resolution`, or use the monthly table.
+- For daily player facts, filter `is_complete_day` (at least 80% of the expected readings), or a half-collected day
+  looks like a drop.
+- A missing player count means unknown, not zero. The models drop those rows; do not turn them into zeros.
+- Join names through `dim_game` on `steam_app_id`.
+- "Sale" in column names means a Steam discount period, not units sold.
+- Reviews are the newest 1,000 per game plus everything fetched since; reviews before 2026-09-28 are a
+  helpfulness-ordered sample.
+- What you find are associations. A discount coinciding with more players is not evidence that the discount caused it.
+
+**Example queries.**
+
+```sql
+-- 1. Which games are tracked, with genres
+select steam_app_id, name, release_date, steam_genres
+from marts.dim_game
+order by name;
+
+-- 2. Daily players of one game (complete days only)
+select activity_date, avg_players, peak_players
+from marts.fact_player_activity_daily
+where steam_app_id = 1091500 and is_complete_day
+order by activity_date;
+
+-- 3. The ten busiest games in the latest month
+select g.name, m.avg_players
+from marts.fact_player_activity_monthly m
+join marts.dim_game g using (steam_app_id)
+where m.activity_month = (select max(activity_month) from marts.fact_player_activity_monthly)
+order by m.avg_players desc
+limit 10;
+
+-- 4. What is discounted right now, deepest first
+select g.name, p.price_amount, p.regular_amount, p.discount_pct
+from marts.fact_price_daily p
+join marts.dim_game g using (steam_app_id)
+where p.price_date = (select max(price_date) from marts.fact_price_daily) and p.is_on_sale
+order by p.discount_pct desc;
+
+-- 5. Your own question: average players on discounted vs undiscounted days (5-minute window)
+--    A raw comparison. It ignores trends and updates; rpt_discount_effect compares each discount with its own
+--    14-day baseline instead.
+select g.name, p.is_on_sale, round(avg(a.avg_players)) as avg_players, count(*) as days
+from marts.fact_price_daily p
+join marts.fact_player_activity_daily a
+  on a.steam_app_id = p.steam_app_id and a.activity_date = p.price_date
+join marts.dim_game g on g.steam_app_id = p.steam_app_id
+where a.is_complete_day and a.data_resolution = '5min'
+group by g.name, p.is_on_sale
+order by g.name, p.is_on_sale;
+
+-- 6. The ready-made Q3 answer: biggest player lifts during valid discounts
+select name, sale_start, max_discount_pct, round(lift_during * 100, 1) as lift_during_pct
+from reporting.rpt_discount_effect
+where episode_status = 'valid'
+order by lift_during desc
+limit 10;
+
+-- 7. The ready-made Q4 answer: the most unusual single-game days
+select a.activity_date, g.name, a.direction, round(a.z_score, 1) as z_score, a.avg_players
+from reporting.rpt_market_anomalies a
+join marts.dim_game g using (steam_app_id)
+where a.is_anomaly and not a.is_market_wide
+order by abs(a.z_score) desc
+limit 10;
+
+-- 8. Share of positive reviews per game
+select g.name, count(*) as reviews, round(avg(r.voted_up::int) * 100, 1) as positive_pct
+from marts.fact_reviews r
+join marts.dim_game g using (steam_app_id)
+group by g.name
+order by positive_pct;
+```
+
+If a query returns nothing, check the coverage of that game first (`observability.game_coverage`): not every game has
+every kind of data.
+
+## A10. Turn a query into a model
+
+When an analysis is worth keeping, make it a dbt model so it is rebuilt, tested and documented with everything else:
+
+1. Create `game_market/models/reporting/rpt_<your_name>.sql`. Read only through `{{ ref('...') }}` and only from
+   `marts` models or other `rpt_` models (the layer rules are in `docs/DATA_MODEL.md`).
+2. Describe it in `game_market/models/reporting/_reporting__models.yml`: the grain (what one row is), a description,
+   and tests on the key.
+3. Build it: `dbt build --select rpt_<your_name>` from `game_market/`.
+4. If a dashboard page uses it, declare it in `game_market/models/exposures.yml`.
+
+---
+
+# Part B. Operating the pipeline
+
+## B1. What runs where
+
+The hourly flow runs in Prefect Cloud on the managed pool. Everything else runs on your machine: the daily flow
+(by hand, or `--serve` for 07:00 Europe/Berlin), the 5-minute backfill, OpenCritic, and the dashboard
+(`streamlit run dashboard/home.py`, read-only). The daily flow is local because `dbt build` writes a local DuckDB
+file. Flow details: [docs/PIPELINE.md](docs/PIPELINE.md).
+
+## B2. Checking health
+
+| Question | Look here |
+|---|---|
+| Is everything healthy right now? | Dashboard page **Pipeline health** (needs `DATABASE_URL`) |
+| Did the hourly flow run? | Prefect Cloud, deployment `hourly-steam-ingestion`, flow runs |
+| Which game or request failed? | Table `ingestion_log` (one row per game per stage per run) |
+| Which stage of the daily flow failed? | Table `pipeline_run_log` (stages: `resolve_ids`, `ingest_prices`, `ingest_app_details`, `ingest_reviews`, `ingest_steamcharts`, `freshness_check`, `dbt_build`), or the Prefect run summary |
+| Which dbt model or test failed? | Table `dbt_node_result`, or `game_market/target/run_results.json` for the last local build |
+| What did a game receive, and why is it in or out of Q1 to Q4? | Model `observability.game_coverage` |
+
+From the command line (from `game_market/`):
+
+```bash
+dbt show --inline "select * from {{ ref('mart_pipeline_health') }}"
+```
+
+`observability.mart_pipeline_health` is a view computed against `now()`, so a stopped pipeline turns red by itself.
+Thresholds for ok, warn and fail: [docs/PIPELINE.md](docs/PIPELINE.md#health-rules-observabilitymart_pipeline_health).
+The daily sources are expected once a day, so a `warn` on a day you did not start the daily flow is expected.
+
+## B3. Routine tasks
+
+### B3.1 Daily refresh
+
+1. Close the Streamlit dashboard. dbt needs the write lock on the DuckDB file.
+2. Run, from the repository root with the virtual environment active:
+
+   ```bash
+   python flows/daily_market_refresh.py              # all active games
+   python flows/daily_market_refresh.py 1145360      # only these games, for testing one game
+   python flows/daily_market_refresh.py --serve      # stay running, scheduled daily 07:00 Europe/Berlin
+   ```
+
+3. Read the **Run summary** at the end of the log. Expected: every task completed and `dbt_build` with
+   `PASS=... WARN=0 ERROR=0`.
+4. Open the dashboard and check **Pipeline health**.
+
+The flow loads active games, resolves ITAD IDs, then runs prices, app details, reviews and SteamCharts in parallel
+(each retries only its failed games once, five minutes later), checks that the newest hourly file is at most 3 hours
+old, and runs `dbt build` only if all of that succeeded. If any task failed, `dbt build` is skipped and the flow run
+is marked failed. This is intended: models are never built on a half-refreshed source.
+
+Reruns are safe. Raw S3 is append-only, and staging keeps the latest fetch per natural key.
+
+### B3.2 Build models only
+
+From `game_market/`:
+
+```bash
+dbt deps                                                    # first time only (dbt_utils)
+dbt build                                                   # full: needs S3 credentials and DATABASE_URL
+dbt build --target analytics --exclude tag:observability    # without the log database
+dbt build --select +rpt_discount_effect                     # one model and everything it depends on
+```
+
+The daily flow chooses the mode itself: full when the log database answers, otherwise analytics with a warning.
+
+### B3.3 Dashboard
+
+```bash
+streamlit run dashboard/home.py
+```
+
+It opens `data/game_market.duckdb` read-only. If `DATABASE_URL` is missing or the log database is unreachable, only
+the Pipeline health page shows a message; every other page still works.
+
+### B3.4 Add a game
+
+1. Add a row to `game_market/seeds/tracked_games.csv`: `steam_app_id,game_name,is_active` (`true`).
+2. Commit and merge to `main`. The hourly deployment clones `main` on each run, so the game enters hourly
+   collection only after the merge.
+3. Run the daily flow for that game: `python flows/daily_market_refresh.py <app_id>`.
+4. If the game exists in the Mendeley 5-minute dataset: `python src/ingestion/backfill_player_counts.py <app_id>`.
+   It skips games that already have a backfill.
+5. Check `observability.game_coverage` for the game. Games without 5-minute data appear in Q1 and Q2 but not in Q3
+   and Q4.
+
+### B3.5 Stop collecting a game
+
+Set `is_active` to `false` in `tracked_games.csv`. Ingestion stops, history stays in the models.
+
+### B3.6 OpenCritic (manual only)
+
+Quota: 25 searches and 200 requests per day. Add the OpenCritic ID of a game by hand as a row in
+`manual_id_overrides.csv` (source `opencritic`, status `matched_manual`), then run
+`python src/ingestion/opencritic_reviews.py`. Only games with such a row are fetched.
+
+### B3.7 Deploy or update the hourly flow
+
+Only needed when `prefect.yaml` changes. Code changes reach the managed pool through the next `git clone` of `main`.
+
+```bash
+prefect cloud login
+prefect deploy --name hourly-steam-ingestion
+```
+
+The deployment reads these Prefect secret blocks and passes them as environment variables: `neon-database-url`,
+`aws-access-key`, `aws-secret-key`, `aws-region`, `aws-bucket`. Dependencies come from `requirements.txt` at each
+run, so **a package the hourly script imports must be listed there** (see the 2026-09-18 incident in Part C).
+
+---
+
+# Part C. When something looks off
+
+These are known situations, each one detected and reported by the pipeline. Find the symptom, then the cause and the
+fix.
+
+## C1. Hourly health is `warn` or `fail`
+
+1. Open Prefect Cloud and check the latest runs of `hourly-steam-ingestion`.
+2. **Run failed with an import error:** a dependency is missing from `requirements.txt`. This happened on
+   2026-09-18 when `psycopg2` was missing after a push; the hourly runs failed until it was added, and that day has
+   no hourly data. Add the package, push to `main`, and watch the next run.
+3. **Run failed on S3 or the database:** check the five Prefect secret blocks. A rotated key must be updated there.
+4. **No runs at all:** the deployment schedule may be paused (Prefect UI), or Prefect Cloud is down.
+5. **Gap in the data:** it cannot be recovered. Steam has no history endpoint for current players. Record the gap in
+   the data quality notes and move on.
+
+## C2. Daily flow: a task failed and `dbt_build` was skipped
+
+Read the summary line for the failed task, then find the games in `ingestion_log`:
+
+```sql
+select run_timestamp, source, stage, game_id, status, http_status, error_message
+from ingestion_log
+where status not in ('success', 'matched_auto', 'matched_manual', 'matched_imported', 'no_coverage')
+  and run_timestamp > now() - interval '1 day'
+order by run_timestamp desc;
+```
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `reviews`: HTTP 429, or "0 reviews" for several games | Steam throttles review requests (about 200 per 5 minutes) and sometimes answers 200 with an empty page | The script backs off and retries; if games still fail, wait 10 minutes and rerun only those games: `python src/ingestion/steam_reviews.py <app_id> <app_id>`. Never run two review fetches in parallel: Steam's limit is shared |
+| `resolve_ids` failed: none of N games resolved | ITAD key invalid or ITAD down | Check `ITAD_API_KEY` and the ITAD status, then rerun. Partial misses only warn |
+| `prices` failed for some games | ITAD rate limit or outage | Rerun the daily flow for those games |
+| `steamcharts`: stopped by bot protection (exit code 2) | The site served a challenge or robots.txt now disallows `/app` | Do not retry in a loop. Wait, check robots.txt in a browser, rerun later. If it persists, SteamCharts monthly data stays at its last state and Kaggle fills older gaps |
+| `freshness_check`: newest hourly file is too old | The hourly flow is not running | Fix the hourly flow first (C1), then rerun |
+| `freshness_check`: no hourly file for today or yesterday | Same, or wrong `AWS_BUCKET` | Check the bucket name and credentials. On a first run, run the hourly script once before the daily flow |
+
+After fixing the cause, rerun the daily flow. It is idempotent.
+
+## C3. dbt build fails
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| "DuckDB file ... is locked" | The dashboard (or another process) has the file open | Stop Streamlit and rerun |
+| Out-of-memory or "Allocation failure" during a build | Too many parallel S3 scans or other memory-heavy programs | Keep `--threads 1` (default), close other heavy programs, or raise `DUCKDB_MEMORY_LIMIT` (default 2GB). Never use a `settings:` entry for `temp_directory`; it must stay in `config_options` |
+| Log database error on the full target | `DATABASE_URL` missing or unreachable | Use `--target analytics --exclude tag:observability`. The daily flow falls back to this by itself and warns |
+| "No files found that match the pattern" on a first build | One of the one-time inputs or the first hourly or backfill file is missing | Complete A4 and A6 |
+| A test fails: uniqueness on a staging model | Two rows share the natural key after deduplication | Inspect the raw files for that source and date and the model's dedup rule (latest fetch per key). Do not delete raw files without a backup |
+| A test fails: relationship to `dim_game` | A fact references a game missing from `dim_game`. Often `dim_game` was not rebuilt first, or the game has no Steam appdetails | Run `dbt build --select dim_game+`. If the game never had appdetails, it is out of scope by design |
+| `Catalog Error` or missing relation on a fresh DuckDB file | Models not built yet | Run `dbt deps`, then `dbt build` |
+
+Never edit a mart table by hand. Fix the source or the model and rebuild.
+
+## C4. Dashboard shows no or stale data
+
+1. Check when the last `dbt build` succeeded (Pipeline health, `dbt_build` row).
+2. If the page shows an error about the DuckDB file, check that `data/game_market.duckdb` exists. The dashboard
+   always opens that fixed path (`dashboard/db.py`) and ignores `DUCKDB_PATH`. dbt does use `DUCKDB_PATH`, so if you
+   point it at another file, the dashboard will not see that build.
+3. Pipeline health empty: `DATABASE_URL` missing or the database unreachable. This affects only that page.
+
+## C5. Numbers changed after a rebuild
+
+Expected when new data arrived: hourly readings, new discounts, new reviews. To prove that a code change did not
+alter existing data, take a fingerprint before and after:
+
+```bash
+python src/utils/fingerprint_models.py before.json --schemas staging intermediate marts reporting observability seeds
+# make the change, rebuild, then:
+python src/utils/fingerprint_models.py after.json --schemas staging intermediate marts reporting observability seeds --diff before.json
+```
+
+See the header of `src/utils/fingerprint_models.py` for the cutoff and rename options.
+
+---
+
+# Part D. Rebuild and replay
+
+- **Raw S3 is the source of truth.** It is append-only. Every model can be rebuilt from it with `dbt build`; no
+  API needs to be called again.
+- **Rebuild everything from raw:** move `data/game_market.duckdb` aside, then `dbt deps` and `dbt build`.
+- **Refetch one source for some games:** run the matching script with app IDs (section E2). Staging keeps the latest
+  fetch per natural key, so old files do not need deleting.
+- **Backups:** the DuckDB file and the S3 bucket are not backed up automatically. Copy `data/game_market.duckdb`
+  before risky changes. File names containing `backup` are git-ignored.
+- **Cannot be recovered:** hourly player counts for a missed hour (no Steam history endpoint).
+- **Known timestamp quirk:** hourly files before 2026-09-20 carry Berlin-time timestamps; later files are UTC.
+
+---
+
+# Part E. Reference
+
+## E1. Credentials and security
+
+| Secret | Lives in |
+|---|---|
+| AWS keys, bucket, ITAD key, OpenCritic key, `DATABASE_URL` | Local `.env` (git-ignored) |
+| Same values for the hourly flow | Prefect secret blocks (names in B3.7) |
+
+To rotate a key: create the new key at the provider, update `.env` and the Prefect secret block, run one hourly
+flow manually, then disable the old key. If a secret was ever committed, rotate it immediately; deleting the file is
+not enough because git keeps history. Use an IAM user with access to the one bucket only.
+
+## E2. Command reference
+
+| Task | Command (repository root unless noted) |
+|---|---|
+| Daily flow, all games | `python flows/daily_market_refresh.py` |
+| Daily flow, chosen games | `python flows/daily_market_refresh.py <app_id> ...` |
+| Daily flow on a schedule | `python flows/daily_market_refresh.py --serve` |
+| One hourly reading | `python First_data_ingest/steam_data_ingest.py` |
+| Resolve ITAD IDs | `python src/ingestion/resolve_ids.py [app_id ...]` |
+| Prices | `python src/ingestion/itad_price_history.py [app_id ...]` |
+| App details | `python src/ingestion/steam_app_details.py [app_id ...]` |
+| Reviews | `python src/ingestion/steam_reviews.py [app_id ...]` |
+| SteamCharts monthly | `python src/ingestion/steamcharts_monthly.py [app_id ...]` |
+| 5-minute backfill | `python src/ingestion/backfill_player_counts.py [app_id ...]` |
+| OpenCritic reviews | `python src/ingestion/opencritic_reviews.py` |
+| Create observability tables | `python -m src.observability.run_log --create` |
+| dbt full build (from `game_market/`) | `dbt build` |
+| dbt without log database | `dbt build --target analytics --exclude tag:observability` |
+| dbt docs and lineage | `dbt docs generate` then `dbt docs serve` |
+| Find unused models | `dbt parse` then `python ../src/utils/find_unused_nodes.py` |
+| Dashboard | `streamlit run dashboard/home.py` |
+
+## E3. Raw data layout and known limits
+
+Raw layout in S3: [TRD section 4.1](TRD_Game_Market_Intelligence_v2.md#41-raw-layout-in-s3). Known technical limits:
+[TRD section 13](TRD_Game_Market_Intelligence_v2.md#13-known-technical-limitations).

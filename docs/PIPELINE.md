@@ -75,8 +75,6 @@ The question it answers: **is the pipeline healthy right now, and if not, where 
   and a Prefect log line, and the task carries on. A stage's own exception is re-raised unchanged.
 - **Ingestion scripts behave the same way.** They write `ingestion_log` through `src/common/log_db.py`. A missing
   `DATABASE_URL`, an unreachable database or a failed insert prints one warning, and the ingestion continues.
-  - Exception: `src/ingestion/opencritic_id_resolution.py`, obsolete and in no flow. Its output *is* a Postgres
-    table (`game_source_mapping`), so it still requires the database.
   - The hourly flow already skipped the log without `DATABASE_URL` and guarded its connection, so it was left
     unchanged.
 
@@ -105,14 +103,20 @@ keep saying "healthy" if builds stopped, which is exactly the failure it has to 
 `mart_dbt_run_history` is a view for a related reason: a build's results are recorded only after it finishes, so a
 table built by that build would always be one build behind.
 
-| Component | Evidence | ok | warn | fail |
-|---|---|---|---|---|
-| `hourly_player_counts` | `ingestion_log` (steam / raw) | last success ≤ 2 h ago | ≤ 6 h | > 6 h |
-| `prices`, `app_details`, `reviews`, `steamcharts_monthly` | `ingestion_log` + the flow's stage rows | ≤ 26 h | ≤ 48 h | > 48 h |
-| `dbt_build` | `dbt_node_result` + the flow's `dbt_build` stage | ≤ 26 h | ≤ 48 h | > 48 h, **or** the latest recorded build had a model error or a failing test (regardless of age) |
+| Component | Evidence | ok threshold (hours since last success) |
+|---|---|---|
+| `hourly_player_counts` | `ingestion_log` (steam / raw) | 2 h |
+| `prices`, `app_details`, `reviews`, `steamcharts_monthly` | `ingestion_log` + the flow's stage rows | 26 h |
+| `dbt_build` | `dbt_node_result` + the flow's `dbt_build` stage | 26 h |
 
-- A component is at least `warn` when its latest attempt failed, partly failed or was skipped, even if an earlier
-  success is recent.
+Status, evaluated top to bottom:
+1. **fail** when the component has never succeeded, its latest attempt failed, partly failed or was skipped, or
+   (`dbt_build`) the latest recorded build had a model error or a failing test. Age does not matter here.
+2. **warn** when the last success is older than the ok threshold.
+3. **ok** otherwise.
+
+Being late alone never makes a component `fail`; it stays `warn` however old the last success is. The rules are
+checked by the singular test `tests/assert_pipeline_health_rules.sql` (tag `observability`).
 - The latest attempt is the latest clock hour for hourly data and the latest UTC day for the daily sources; a flow
   stage row replaces it when it is newer.
 
