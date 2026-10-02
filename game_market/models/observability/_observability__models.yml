@@ -44,9 +44,10 @@ models:
     description: >
       One row per pipeline component (hourly_player_counts, prices, app_details, reviews, steamcharts_monthly,
       dbt_build). A VIEW: health is computed when read, against now(), over staging views that read Neon live.
-      Thresholds: hourly ok <= 2 h, warn <= 6 h, fail > 6 h since the last success; daily sources and dbt_build
-      ok <= 26 h, warn <= 48 h, fail > 48 h. At least warn when the latest attempt failed, partly failed or was
-      skipped; dbt_build fails when its latest recorded invocation had an error or a failing test.
+      Status: fail when the component never succeeded, its latest attempt failed, partly failed or was skipped,
+      or (dbt_build) its latest recorded invocation had an error or a failing test; otherwise warn when the last
+      success is older than ok_hours (hourly 2 h, daily sources and dbt_build 26 h); otherwise ok. Age alone
+      never makes a component fail. The rules are checked by tests/assert_pipeline_health_rules.sql.
     columns:
       - name: component
         data_tests:

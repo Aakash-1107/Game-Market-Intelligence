@@ -6,20 +6,21 @@
 --
 -- Sources: ingestion_log (every ingestion script, including the hourly flow), pipeline_run_log (daily-flow stages,
 -- including stages that failed before logging any game, or were skipped), dbt_node_result (daily-flow dbt builds).
--- Thresholds (hours since last success):  hourly_player_counts ok <= 2, warn <= 6, fail > 6;
---                                          daily sources and dbt_build ok <= 26, warn <= 48, fail > 48.
--- A component is at least `warn` when its latest attempt failed, partly failed or was skipped; dbt_build is
--- `fail` when the latest recorded invocation had an error or a failing test, regardless of age.
+-- Status, evaluated top to bottom:
+--   fail: never succeeded; the latest attempt failed, partly failed or was skipped; or (dbt_build) the latest
+--         recorded invocation had an error or a failing test. Age does not matter for these.
+--   warn: the last success is older than ok_hours (hourly_player_counts 2 h; daily sources and dbt_build 26 h).
+--   ok:   otherwise. Age alone never makes a component fail.
 
 with components as (
     select * from (values
-        ('hourly_player_counts', 1,  2.0,  6.0),
-        ('prices',               24, 26.0, 48.0),
-        ('app_details',          24, 26.0, 48.0),
-        ('reviews',              24, 26.0, 48.0),
-        ('steamcharts_monthly',  24, 26.0, 48.0),
-        ('dbt_build',            24, 26.0, 48.0)
-    ) as t(component, expected_interval_hours, ok_hours, warn_hours)
+        ('hourly_player_counts', 1,  2.0),
+        ('prices',               24, 26.0),
+        ('app_details',          24, 26.0),
+        ('reviews',              24, 26.0),
+        ('steamcharts_monthly',  24, 26.0),
+        ('dbt_build',            24, 26.0)
+    ) as t(component, expected_interval_hours, ok_hours)
 ),
 
 log as (
@@ -100,7 +101,6 @@ combined as (
         c.component,
         c.expected_interval_hours,
         c.ok_hours,
-        c.warn_hours,
         greatest(coalesce(i.last_attempt_at, s.last_attempt_at, d.last_attempt_at),
                  coalesce(s.last_attempt_at, i.last_attempt_at, d.last_attempt_at),
                  coalesce(d.last_attempt_at, i.last_attempt_at, s.last_attempt_at))           as last_attempt_at,
@@ -138,13 +138,11 @@ select
     a.expected_interval_hours,
     a.hours_since_last_success,
     a.ok_hours,
-    a.warn_hours,
     case
         when a.last_success_at is null                                  then 'fail'
+        when a.last_status in ('failed', 'partial', 'skipped')          then 'fail'
         when a.component = 'dbt_build' and a.last_invocation_failed     then 'fail'
-        when a.hours_since_last_success > a.warn_hours                  then 'fail'
-        when a.hours_since_last_success > a.ok_hours
-          or a.last_status in ('failed', 'partial', 'skipped')          then 'warn'
+        when a.hours_since_last_success > a.ok_hours                    then 'warn'
         else 'ok'
     end                                                                 as health_status,
     l.latest_data_at                                                    as latest_data_in_warehouse_at,  -- as of the last dbt build

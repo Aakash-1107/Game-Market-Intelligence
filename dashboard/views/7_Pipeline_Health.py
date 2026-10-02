@@ -34,9 +34,18 @@ health = query_live("""
     from observability.mart_pipeline_health
 """).set_index("component").reindex(list(LABELS)).reset_index()
 checked = local(health["checked_at"].iloc[0])
-n_bad = int((health["health_status"] != "ok").sum())
-st.markdown(f"#### {'Everything is healthy' if n_bad == 0 else f'{n_bad} of {len(health)} components need attention'}")
-st.caption(f"Checked {checked:%a %d %b %Y, %H:%M} (Berlin time). Refreshes every minute.")
+n_fail = int((health["health_status"] == "fail").sum())
+n_warn = int((health["health_status"] == "warn").sum())
+if n_fail + n_warn == 0:
+    st.markdown("#### Everything is healthy")
+else:
+    parts = [f"{n} {word}" for n, word in ((n_fail, "failing"), (n_warn, "late")) if n]
+    st.markdown(f"#### {n_fail + n_warn} of {len(health)} components need attention ({', '.join(parts)})")
+st.caption(f"Checked {checked:%a %d %b %Y, %H:%M} (Berlin time). Refreshes every minute.  \n"
+           "**Failing:** never succeeded, or the latest attempt failed, partly failed or was skipped (for the "
+           "warehouse build also: a model error or a failing test). **Warning:** the latest attempt was fine, but the "
+           "last success is older than expected (2 h for hourly player counts, 26 h for the daily sources and the "
+           "build). Being late alone never turns a component red.")
 
 
 def ago(hours: float) -> str:
@@ -45,7 +54,7 @@ def ago(hours: float) -> str:
     return f"{hours:.0f} h ago" if hours < 48 else f"{hours / 24:.0f} days ago"
 
 
-# Thresholds stay in the model (mart_pipeline_health) and docs/PIPELINE.md; the cards show status only.
+# The rules live in the model (mart_pipeline_health) and docs/PIPELINE.md; the caption above only summarises them.
 cols = st.columns(3)
 for i, r in health.iterrows():
     with cols[i % 3].container(border=True, height="stretch"):
