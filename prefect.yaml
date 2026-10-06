@@ -36,4 +36,4 @@ deployments:
   - cron: 0 * * * *
     timezone: Europe/Berlin
     day_or: true
-    active: true
+    active: false

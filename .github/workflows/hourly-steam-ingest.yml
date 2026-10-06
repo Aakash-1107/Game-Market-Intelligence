@@ -1,0 +1,36 @@
+name: hourly-steam-player-counts
+
+on:
+  schedule:
+    - cron: "5 * * * *"   # UTC; :05 avoids the congested top of the hour
+  workflow_dispatch:       # manual run button
+
+concurrency:
+  group: steam-player-counts
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt prefect
+
+      - name: Run player count ingestion
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
+        run: >
+          python -c "import sys; sys.path.insert(0, 'First_data_ingest');
+          import steam_data_ingest as s; s.main()"
