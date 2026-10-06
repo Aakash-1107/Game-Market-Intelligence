@@ -20,7 +20,7 @@ deployments:
   tags: []
   concurrency_limit: null
   description: null
-  entrypoint: First_data_ingest/steam_data_ingest.py:steam_player_count_ingest
+  entrypoint: flows/hourly_player_counts.py:steam_player_count_ingest
   parameters: {}
   work_pool:
     name: managed-steam-pool

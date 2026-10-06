@@ -22,7 +22,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt prefect
+        run: pip install -r requirements.txt
 
       - name: Run player count ingestion
         env:
@@ -31,6 +31,4 @@ jobs:
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
-        run: >
-          python -c "import sys; sys.path.insert(0, 'First_data_ingest');
-          import steam_data_ingest as s; s.main()"
+        run: python First_data_ingest/steam_data_ingest.py

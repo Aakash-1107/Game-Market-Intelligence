@@ -11,7 +11,6 @@ import pandas as pd
 import psycopg2
 import requests
 from dotenv import load_dotenv
-from prefect import flow
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.common.tracked_games import load_tracked_games  # noqa: E402
@@ -204,10 +203,5 @@ def main():
             print("No DATABASE_URL — skipping ingestion_log.")
 
 
-@flow(retries=1, retry_delay_seconds=120)
-def steam_player_count_ingest():
-    main()
-
-
 if __name__ == "__main__":
-    steam_player_count_ingest()
+    main()
