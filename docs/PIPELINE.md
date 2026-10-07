@@ -1,10 +1,13 @@
 # Pipeline
 
-Two Prefect flows feed the warehouse; dbt turns the raw files into the models in `docs/DATA_MODEL.md`.
+Data collection frozen on 2026-10-07; the published snapshot and the hosted dashboard show the final state.
+
+An hourly script and a daily Prefect flow feed the warehouse; dbt turns the raw files into the models in
+[DATA_MODEL.md](DATA_MODEL.md).
 
 | Flow | Where it runs | Schedule | What it does |
 |---|---|---|---|
-| `hourly-steam-ingestion` (`First_data_ingest/steam_data_ingest.py`) | Prefect managed work pool | every hour (`0 * * * *`) | Current player count for every active game, written to S3 `raw/steam/player_counts/`; one `ingestion_log` row per game |
+| Hourly player counts (`src/ingestion/steam_player_counts.py`) | GitHub Actions workflow `.github/workflows/hourly-steam-ingest.yml` (manual runs only since the freeze), or any machine with the repository | Any scheduler, every hour. During collection: a Prefect managed work pool, then a GitHub Actions schedule ([TRD section 13.1](TRD.md#131-collection-incidents)) | Current player count for every active game, written to S3 `raw/steam/player_counts/`; one `ingestion_log` row per game |
 | `daily_market_refresh` (`flows/daily_market_refresh.py`) | the machine that holds `data/game_market.duckdb` (local run / `--serve`, 07:00 Europe/Berlin) | daily | resolve ITAD IDs → prices, Steam app details, Steam reviews, SteamCharts monthly (in parallel) → hourly-data freshness check → `dbt build` (only if everything before it succeeded) |
 
 ## Running dbt
@@ -35,7 +38,7 @@ How dbt finds the profile and the variables:
 - The dashboard works the same way. Without `DATABASE_URL`, or with the database unreachable, only the Pipeline
   health page shows a message; every other page reads the local DuckDB file.
 
-**Any Postgres works for the logs.** Production uses Neon. For reproduction a local Postgres is enough:
+**Any Postgres works for the logs.** Production used Neon. For reproduction a local Postgres is enough:
 1. Point `DATABASE_URL` at it.
 2. Create the tables with `psql "$DATABASE_URL" -f sql/ddl/ingestion_log.sql` and
    `-f sql/ddl/observability.sql`, or run `python -m src.observability.run_log --create`.
@@ -48,9 +51,9 @@ The question it answers: **is the pipeline healthy right now, and if not, where 
 
 | Layer | Answers | Where |
 |---|---|---|
-| Prefect Cloud | Did the flow run, and did its tasks finish? | Prefect UI (flow runs, task states, logs) |
-| `ingestion_log` (Postgres) | Did each request succeed, per game? | one row per game per stage per script run, written by every ingestion script, including the hourly flow |
-| Observability models (dbt) | Is the data healthy end to end? | `pipeline_run_log` + `dbt_node_result` + `ingestion_log`, turned into `observability.mart_pipeline_health`, `mart_ingestion_daily` and `mart_dbt_run_history`; dashboard page **Pipeline health** |
+| Run history | Did the flow run, and did its tasks finish? | Prefect UI for the daily flow (flow runs, task states, logs); the GitHub Actions run list for the hourly workflow |
+| `ingestion_log` (Postgres) | Did each request succeed, per game? | one row per game per stage per script run, written by every ingestion script, including the hourly script |
+| Observability models (dbt) | Is the data healthy end to end? | `pipeline_run_log` + `dbt_node_result` + `ingestion_log`, turned into `observability.mart_pipeline_health`, `mart_pipeline_stage_runs`, `mart_ingestion_daily` and `mart_dbt_run_history`; dashboard page **Pipeline health** |
 
 ### What the daily flow logs
 
@@ -75,14 +78,15 @@ The question it answers: **is the pipeline healthy right now, and if not, where 
   and a Prefect log line, and the task carries on. A stage's own exception is re-raised unchanged.
 - **Ingestion scripts behave the same way.** They write `ingestion_log` through `src/common/log_db.py`. A missing
   `DATABASE_URL`, an unreachable database or a failed insert prints one warning, and the ingestion continues.
-  - The hourly flow already skipped the log without `DATABASE_URL` and guarded its connection, so it was left
-    unchanged.
+  The hourly script has its own guard: without `DATABASE_URL` it skips the log.
 
 ### How dbt reads the logs
 
 Target `dev` attaches the log database read-only through DuckDB's `postgres` extension (alias `ops`). It is declared
 as dbt source `ops` (`ingestion_log`, `pipeline_run_log`, `dbt_node_result`), and the `stg_ops__*` staging views
-read it live. The dashboard makes the same read-only attach.
+read it at query time. The dashboard makes the same read-only attach when it reads the full warehouse; the public
+snapshot has no observability views, so its Pipeline health page shows only the daily collection completeness
+(`mart_ingestion_daily`).
 
 ### Grouping runs: `ingestion_log.run_id` is per row
 
@@ -100,8 +104,8 @@ The daily flow's own stages are grouped properly by the Prefect flow run id (`pi
 A **view**, not a table: status is computed when it is read, against `now()`. A table built at dbt-build time would
 keep saying "healthy" if builds stopped, which is exactly the failure it has to detect.
 
-`mart_dbt_run_history` is a view for a related reason: a build's results are recorded only after it finishes, so a
-table built by that build would always be one build behind.
+`mart_dbt_run_history` and `mart_pipeline_stage_runs` are views for a related reason: a build's results are recorded
+only after it finishes, so a table built by that build would always be one build behind.
 
 | Component | Evidence | ok threshold (hours since last success) |
 |---|---|---|
@@ -140,7 +144,7 @@ ITAD fetch in `ingestion_log`, because `stg_itad__price_history` does not expose
 
 ### Known limitations
 
-- **The hourly flow is not instrumented stage by stage.** It runs on the managed pool and was deliberately left
-  unchanged. Its health is inferred from `ingestion_log` (one row per game per hour) and data freshness.
+- **The hourly script is not instrumented stage by stage.** Its health is inferred from `ingestion_log` (one row per
+  game per hour) and data freshness.
 - Only dbt builds run **by the daily flow** are recorded. A manual `dbt build` is not.
 - `expected` uses today's active games, so days before a game was added read slightly below 100%.

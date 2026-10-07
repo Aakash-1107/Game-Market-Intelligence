@@ -1,5 +1,10 @@
 # Observability layer (Part B) — 2026-09-29
 
+> **Note (2026-10-07): names superseded.** The hourly flow `First_data_ingest/steam_data_ingest.py` is now
+> `src/ingestion/steam_player_counts.py` and runs from GitHub Actions instead of the Prefect managed pool;
+> `steam_review_histogram.py` and `opencritic_id_resolution.py` (with its table `game_source_mapping`) no longer exist.
+> The backup `~/.dbt/profiles.yml.bak_2026-09-29` is local, not in the repository.
+
 Goal: one queryable answer to "is the pipeline healthy right now, and if not, where did it fail?", without ever
 breaking the pipeline. Design and rules: `docs/PIPELINE.md`.
 
@@ -31,7 +36,7 @@ Fields taken from `run_results.json`, all read from the actual file (dbt 1.12.5,
   `PASS=188 WARN=0 ERROR=0`, target `analytics`.
   - dbt loads the repo `.env` by itself, so "unset" was tested as an empty override (`load_dotenv` never replaces a
     variable that is already set).
-- **Part A models still identical:** `fingerprint_post_observability_2026_09_29.*` vs the A3 result, with
+- **Part A models still identical:** `fingerprints/fingerprint_post_observability_2026_09_29.*` vs the A3 result, with
   `--cutoff "2026-09-29 17:17:48+00"` and the same dropped columns. Every existing relation is identical; the only
   differences are the 7 new observability relations. This was taken before any flow run, because the test runs below
   fetched new data for 2 games.

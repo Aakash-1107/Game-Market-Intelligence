@@ -2,16 +2,18 @@
 
 ## PC Game Market & Activity Intelligence
 
+Data collection frozen on 2026-10-07; the published snapshot and the hosted dashboard show the final state.
+
 | | |
 |---|---|
-| Version | 2.0 |
-| Date | 2026-10-02 |
+| Version | 2.1 |
+| Date | 2026-10-07 |
 | Author | Aakash |
-| Status | Describes the implemented system (build of 2026-09-29) |
-| Companion documents | [TRD](TRD_Game_Market_Intelligence_v2.md) (how it is built), [docs/ANALYTICS.md](docs/ANALYTICS.md) (metric definitions), [RUNBOOK.md](RUNBOOK.md) (use and operation) |
+| Status | Describes the implemented system; collection frozen, results from the published snapshot of 2026-10-07 |
+| Companion documents | [TRD](TRD.md) (how it is built), [ANALYTICS.md](ANALYTICS.md) (metric definitions and results), [RUNBOOK.md](RUNBOOK.md) (use and operation) |
 
-This document states **what** the system must deliver and **why**. How it is built is in the TRD. Metric formulas are
-in `docs/ANALYTICS.md` and are not repeated here.
+This document states **what** the system must deliver and **why**. How it is built is in the TRD. Metric formulas and
+results are in [ANALYTICS.md](ANALYTICS.md) and are not repeated here.
 
 ---
 
@@ -40,16 +42,8 @@ Every requirement in this document exists to answer one of these four questions.
 | Q4 | **Unusual days.** Which days show abnormal activity for a game, and do they coincide with discounts or with activity across Steam? | A list of flagged days per game with the expected range, a marker for days flagged across several games at once, and the rate of flagged days by discount depth |
 
 Results are **descriptive and associational**. The system reports what coincided with what. It makes no causal
-claims, and no output or document may state that a discount caused a change in players.
-
-### Result of the 2026-09-29 build
-
-| Question | Coverage | Headline |
-|---|---|---|
-| Q1 | 50 games with an observed launch; 42 of them at least one year old | The median game holds about 47% of its launch-peak players 3 months after launch and about 41% from month 4 onward |
-| Q2 | 46 games with enough data to be classed | Class counts are on the dashboard page *Activity health* |
-| Q3 | 174 discounts in 23 games | The median game had about 16% more players during a discount than before it, and about 6% more 2 to 4 weeks after |
-| Q4 | 29 games, 375 flagged days | Surges occurred about 13 times as often on days with a discount of 50% or more as on days without a discount. One game with many major updates during sales supplies a large share of those days |
+claims, and no output or document may state that a discount caused a change in players. Coverage and results per
+question: [ANALYTICS.md, Results](ANALYTICS.md#results).
 
 ## 4. Users
 
@@ -74,7 +68,7 @@ claims, and no output or document may state that a discount caused a change in p
 | BR-6 | Obtain player reviews (newest 1,000 English reviews per game) and, for a limited set, critic reviews | Review facts joined to the game dimension |
 | BR-7 | Keep every raw response unchanged so any result can be recomputed without calling a source again | Raw files are append-only; a full model rebuild from raw files completes without any API call |
 | BR-8 | Detect bad or missing data and report pipeline health without stopping the pipeline | Automated tests in every build; a health status per data source that answers "is it healthy now, and where did it fail" |
-| BR-9 | Add a game by changing one row of one file | Verified: [docs/tests/new_game_test_2026_09_28.md](docs/tests/new_game_test_2026_09_28.md) |
+| BR-9 | Add a game by changing one row of one file | Verified: [tests/new_game_test_2026_09_28.md](tests/new_game_test_2026_09_28.md) |
 | BR-10 | Serve Q1 to Q4 and the pipeline health through a dashboard that reads only the analytical tables | One page per question, a market overview, a game explorer, a data page and a pipeline health page |
 | BR-11 | Let a third party reproduce the pipeline and query the data | [RUNBOOK.md](RUNBOOK.md) Part A takes a fresh clone to a first query |
 
@@ -94,7 +88,7 @@ claims, and no output or document may state that a discount caused a change in p
 
 ## 6. Tracked games
 
-- The tracked list is the file `game_market/seeds/tracked_games.csv`: 55 active games on 2026-09-29.
+- The tracked list is the file `game_market/seeds/tracked_games.csv`: 55 active games.
 - Selection criterion: variety of release age, genre, business model (paid, free-to-play) and discount behaviour.
   Games with 5-minute history in the Mendeley dataset were preferred, because only they can answer Q3 and Q4.
 - A game enters scope when it is in the list **and** Steam returns details for it.
@@ -103,11 +97,11 @@ claims, and no output or document may state that a discount caused a change in p
 ## 7. Data requirements
 
 What the system must hold, per business need. The sources that supply it and their technical details are in
-[TRD section 3](TRD_Game_Market_Intelligence_v2.md#3-source-specification).
+[TRD section 3](TRD.md#3-source-specification).
 
 | Need | Required for | Resolution | History required |
 |---|---|---|---|
-| Concurrent players | Q1 to Q4 | 5-minute (Dec 2017 to Aug 2020), hourly (from collection start), monthly (2012 onward) | As long as available |
+| Concurrent players | Q1 to Q4 | 5-minute (Dec 2017 to Aug 2020), hourly (collection window), monthly (2012 onward) | As long as available |
 | Steam price and discount periods | Q3, Q4 | Daily | As long as available |
 | Game details | all (scope, release date, genre) | Current snapshot | Current |
 | Player reviews | Game explorer | Per review | Newest 1,000 per game |
@@ -125,22 +119,21 @@ These limits come from the available data. They are not defects of the pipeline.
 
 | Limit | Effect |
 |---|---|
-| Steam has no history endpoint for current players | Hourly data exists only from the start of collection (mid-September 2026). A missed hour cannot be recovered |
+| Steam has no history endpoint for current players | Hourly data exists only for the collection window (13 Sep 2026, 16:29 UTC to 7 Oct 2026, 14:47 UTC). A missed hour cannot be recovered; the gaps are listed in [TRD section 13.1](TRD.md#131-collection-incidents) |
 | 5-minute history covers Dec 2017 to Aug 2020 and only games in the Mendeley dataset | Q3 covers 23 games and Q4 covers 29 games. Between Aug 2020 and the start of hourly collection only monthly averages exist |
 | The review fetch returns the newest 1,000 reviews per game | Older reviews are absent. Reviews fetched before 2026-09-28 are a helpfulness-ordered sample |
-| ITAD stopped recording Steam price changes for two games although the games stayed discounted | Their discount history is incomplete. This is a source gap |
 | OpenCritic access is quota-limited | Critic reviews exist for 12 of 55 games |
-| Findings are pooled across games in two places (Q3 outcome shares, Q4 surge ratio) | Games with many discounts or flagged days weigh more. Per-game spread: [docs/tests/index_consistency_2026_09_29.md](docs/tests/index_consistency_2026_09_29.md) |
+| Findings are pooled across games in three places (Q3 outcome shares and depth cards, Q4 surge ratio) | Games with many discounts or flagged days weigh more ([ANALYTICS.md, Notes](ANALYTICS.md#notes)) |
 
 ## 9. Success criteria
 
-| # | Criterion | Measure | Result on 2026-09-29 |
+| # | Criterion | Measure | Result |
 |---|---|---|---|
 | 1 | Data from at least three external sources is ingested without manual steps | Sources collected by the scheduled or daily flows | Met: Steam (3 endpoints), IsThereAnyDeal, SteamCharts |
-| 2 | Q1 to Q4 are answered from the data | One reporting model per question, with the coverage in section 3 | Met |
-| 3 | All data tests pass | `dbt build` | Met: 224 nodes passed, 0 errors |
-| 4 | Duplicates cannot enter the models | Uniqueness test on every natural key | Met: the audit found and removed 7,034 duplicate reviews (13% of the table) |
-| 5 | A rerun does not change results | Idempotency test | Met: [docs/tests/idempotency_test_2026_09_28.md](docs/tests/idempotency_test_2026_09_28.md) |
+| 2 | Q1 to Q4 are answered from the data | One reporting model per question, with the coverage in [ANALYTICS.md](ANALYTICS.md#results) | Met |
+| 3 | All data tests pass | `dbt build` | Met on 2026-09-29: 224 nodes passed, 0 errors ([observability test](tests/observability_2026_09_29.md)) |
+| 4 | Duplicates cannot enter the models | Uniqueness test on every natural key | Met: the audit found and removed 7,034 duplicate reviews (13% of the table) ([dedup audit](tests/dedup_audit_2026_09_28.md)) |
+| 5 | A rerun does not change results | Idempotency test | Met: [tests/idempotency_test_2026_09_28.md](tests/idempotency_test_2026_09_28.md) |
 | 6 | A failed source is visible and does not corrupt models | Pipeline health view; `dbt build` is skipped when an upstream task failed | Met |
 | 7 | Adding a game needs one row | BR-9 | Met |
 | 8 | A third party can reproduce the pipeline | BR-11 | Met, with the one-time inputs listed in RUNBOOK A4 |
@@ -152,7 +145,7 @@ These limits come from the available data. They are not defects of the pipeline.
 - Budget: free tiers and open-source tools only.
 - Steam endpoints are rate limited; the pipeline must pace its requests (limits and pacing in the TRD).
 - Scraping is allowed only where the site permits it; the SteamCharts script checks `robots.txt` before it runs.
-- Raw data belongs to its providers and is not stored in the repository.
+- Raw data belongs to its providers and is not stored in the repository ([DATA_SOURCES.md](DATA_SOURCES.md)).
 
 **Assumptions**
 
@@ -166,3 +159,4 @@ These limits come from the available data. They are not defects of the pipeline.
 |---|---|---|
 | 1.0 | 2026-09 | Requirements written before implementation |
 | 2.0 | 2026-10-02 | Rewritten to match the implemented system: four questions renumbered (Q1 life after launch, Q2 activity health, Q3 discounts, Q4 unusual days); removed the supporting questions Q5 to Q7, RAWG, per-game catalogue table, and all open or conditional statements |
+| 2.1 | 2026-10-07 | Collection frozen. Results moved to ANALYTICS.md and taken from the published snapshot; removed the unverified ITAD coverage limit |

@@ -7,7 +7,7 @@ screen, and captions that state what 100% is, how games are combined, and N. Hea
 ## Verification
 
 - **Build:** `dbt build` gave `PASS=192 WARN=0 ERROR=0` (199 nodes). That is A2's 178 + 4 new models + 10 new tests.
-- **Fingerprints:** `fingerprint_pre_index_2026_09_29.*` vs `fingerprint_post_index_2026_09_29.*`.
+- **Fingerprints:** `fingerprints/fingerprint_pre_index_2026_09_29.*` vs `fingerprints/fingerprint_post_index_2026_09_29.*`.
   - Both runs use `--cutoff "2026-09-29 17:17:48+00"` (the A2 build start), so hourly data landing during A3
     doesn't count.
   - `game_coverage.hourly_rows` / `last_hourly_at` are left out of both runs: they read the staging view with no

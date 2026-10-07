@@ -1,5 +1,10 @@
 # Layer refactor — 2026-09-29
 
+> **Note (2026-10-07): names superseded.** The `an_*` models renamed here to `mart_*` are now `rpt_*` models in the
+> `reporting` schema, and the dashboard reads `reporting` and `marts` ([DATA_MODEL.md](../DATA_MODEL.md)).
+> `src/ingestion/opencritic_id_resolution.py` no longer exists. The DB backup `data/game_market_pre_layers_2026-09-29.duckdb`
+> is local evidence, not in the repository; the fingerprints are in [fingerprints/](fingerprints/).
+
 Branch `refactor/dbt-layers`. The goal was a structural refactor: staging → intermediate → marts, with the dashboard
 reading marts only. Every mart must be identical before and after. Result: **identical**. See `docs/DATA_MODEL.md`
 for the resulting model.
@@ -7,10 +12,10 @@ for the resulting model.
 ## Baseline
 
 - DB backup of the Sept 28 19:36 build: `data/game_market_pre_layers_2026-09-29.duckdb`.
-- Reference fingerprint of that build: `fingerprint_ref_build_2026_09_28.{json,txt}` (cutoff 2026-09-28).
+- Reference fingerprint of that build: `fingerprints/fingerprint_ref_build_2026_09_28.{json,txt}` (cutoff 2026-09-28).
 - Fresh baseline: `dbt build --threads 1` on the **unchanged** code against current S3. Result:
   `PASS=154 WARN=0 ERROR=0` (160 nodes). The earlier 157 included `int_game_first_observed` and its 2 tests,
-  deleted in `ef652f1`. Fingerprint: `fingerprint_pre_layers_2026_09_29.{json,txt}` (cutoff 2026-09-29).
+  deleted in `ef652f1`. Fingerprint: `fingerprints/fingerprint_pre_layers_2026_09_29.{json,txt}` (cutoff 2026-09-29).
 
 ### New data since the Sept 28 build (same cutoff, 2026-09-28)
 
@@ -53,7 +58,7 @@ All other relations are unchanged. Staging views are not in this table because t
 1. **Build:** `PASS=160 WARN=0 ERROR=0 NO-OP=7` (167 nodes). That is 154 + 2 new models + 4 new tests
    (`int_tracked_games` unique/not_null, merged model grain and `source` accepted values). The 7th NO-OP is the new
    exposure. The 10 `MissingArgumentsPropertyInGenericTestDeprecation` warnings are pre-existing test syntax.
-2. **Fingerprint:** `fingerprint_post_layers_2026_09_29.{json,txt}`, compared with the fresh baseline with old names
+2. **Fingerprint:** `fingerprints/fingerprint_post_layers_2026_09_29.{json,txt}`, compared with the fresh baseline with old names
    mapped to new ones. **Every pre-existing model, staging view and seed is identical in row count and content.**
    The only differences: 2 new int models added, and `int_game_first_observed` and `source_id_mappings` gone
    (step 4).

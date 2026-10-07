@@ -35,7 +35,7 @@ The **Duplicates before** column was measured on the baseline views.
 
 ## Row counts: baseline vs after Step 1
 
-`dbt build`: `PASS=145 WARN=1 ERROR=0` (+12 new tests; same known WARN). Fingerprint diff (`exploration/fingerprints/step1_2026_09_28.json` vs baseline): **3 of 26 relations differ, all explained.**
+`dbt build`: `PASS=145 WARN=1 ERROR=0` (+12 new tests; same known WARN). Fingerprint diff (`exploration/fingerprints/step1_2026_09_28.json`, local evidence, not in the repository, vs baseline): **3 of 26 relations differ, all explained.**
 
 | Relation | Baseline | After | Explanation |
 |---|---:|---:|---|

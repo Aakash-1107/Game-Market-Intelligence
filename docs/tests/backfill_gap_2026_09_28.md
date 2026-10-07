@@ -1,8 +1,11 @@
 # 5-minute backfill gap (found 2026-09-28)
 
-**Status:** open. Deliberately **not fixed before the Sept 29 demo**.
+**Status:** closed. The 8-game backfill was done on the morning of 2026-09-29: the eight files are in S3 under
+`raw/steam/player_counts/backfill/2026/09/29/`. Verified in the published snapshot of 2026-10-07: each of the eight
+games has 973 days of 5-minute data (2017-12-14 to 2020-08-12), 29 games have 5-minute data, and Q4 covers all 29
+(Q3 covers the 23 of them with valid discounts). The Hollow Knight (367520) test was not run; the game is not tracked.
 
-**Plan:** backfill after the demo (Sept 29 evening) together with the Hollow Knight (367520) test, then re-validate Q3 (sale effect) and Q4 (unusual days).
+**Original plan:** backfill after the demo (Sept 29 evening) together with the Hollow Knight (367520) test, then re-validate Q3 (sale effect) and Q4 (unusual days).
 
 ## Finding
 

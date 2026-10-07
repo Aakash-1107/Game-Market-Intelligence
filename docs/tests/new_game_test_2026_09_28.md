@@ -1,5 +1,11 @@
 # Step 5: end-to-end new-game test with Hades (2026-09-28)
 
+> **Note (2026-10-07): names superseded.** The `an_*` models are now `rpt_*` models in the `reporting` schema; the
+> hourly deployment that "clones `main`" was the Prefect managed pool, replaced by GitHub Actions
+> ([TRD section 13.1](../TRD.md#131-collection-incidents)). Hades' first hourly reading is from 2026-09-29 08:01 UTC
+> (published snapshot). The fingerprints (`exploration/fingerprints/pre_hades_2026_09_28.json`,
+> `post_hades_excl_2026_09_28.json`) are local evidence, not in the repository; neither is the DuckDB snapshot of step 0.
+
 **Result:** adding **one row** to `tracked_games.csv` was enough. Hades (1145360) got details, an ITAD ID, prices, monthly history and reviews, and it appears in the Game Explorer. Nothing changed for the other 54 games.
 
 - **As expected:** no hourly activity yet (that comes after the merge) and no 5-minute backfill.
