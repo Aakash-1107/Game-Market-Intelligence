@@ -1,0 +1,53 @@
+dim_game                                     55  514193136478222826903
+fact_critic_review                          184  1629994209150333652234
+fact_discount_episode                     2,072  19206613683829947521472
+fact_player_activity                  8,064,580  74393352358989884197564702  (cut recorded_at)
+fact_player_activity_daily               29,014  267337453924266260195654  (cut activity_date)
+fact_player_activity_monthly              4,939  44997491295281865746584
+fact_price_daily                        149,679  1380136636917020565793820  (cut price_date)
+fact_price_snapshot                      55,375  511293592222562667153024
+fact_reviews                             82,993  764385791270352173266280
+game_coverage                                55  548653749259326299580
+int_ops__source_latest_data                   5  61627908191226720315
+int_player_activity_daily                29,014  268995325870209976694222  (cut activity_date)
+int_player_activity_monthly__merged        4,939  45361325304484874439337
+int_price_daily                         149,679  1379100565499738826232050  (cut price_date)
+int_sale_episodes                         2,072  19176488143020506476072
+int_tracked_games                            55  498458147813083847628
+manual_id_overrides                          15  129923010756767269207
+mart_dbt_run_history                          0  0
+mart_ingestion_daily                         41  350472364278317765649
+mart_pipeline_health                          6  45630429984848434042
+rpt_activity_health                          55  584924426777795320033
+rpt_discount_effect                       2,068  19054536992097035775736  (cut sale_end)
+rpt_discount_effect_daily                16,001  146576518821716088009604
+rpt_discount_typical                         12  107601584217344227519
+rpt_game_lifecycle                           55  480637163808372767638
+rpt_lifecycle_curve                       1,068  10036553195143859773308
+rpt_lifecycle_typical_curve                  25  220926610888785482642
+rpt_market_anomalies                     28,010  259688314960785426477272  (cut activity_date)
+seed_steam_release_context                    7  61299441023659274976
+stg_itad__price_history                  56,621  520345128483310617466310
+stg_kaggle__steamcharts_monthly         612,265  5650715793170200732126956
+stg_opencritic__reviews                     184  1705015406175171243575
+stg_ops__dbt_node_result                      0  0
+stg_ops__ingestion_log                   17,831  164986867576070247280627
+stg_ops__pipeline_run_log                     0  0
+stg_source_id_mapping                        70  623784101125695627258
+stg_steam__app_details                       55  581800639880076024407
+stg_steam__app_list                     184,973  1709048509343582910138907
+stg_steam__player_counts              8,343,231  76952274569734998118481305  (cut recorded_at)
+stg_steam__reviews                       83,667  770324751317983574900590
+stg_steam__reviews_summary                   56  555237878552596071559
+stg_steamcharts__monthly                  4,939  45070241940503231927449
+tracked_games                                55  548096148568813339609
+
+Diff vs docs/tests/fingerprint_post_index_2026_09_29.json
+  int_ops__source_latest_data        None -> 5
+  mart_dbt_run_history               None -> 0
+  mart_ingestion_daily               None -> 41
+  mart_pipeline_health               None -> 6
+  stg_ops__dbt_node_result           None -> 0
+  stg_ops__ingestion_log             None -> 17831
+  stg_ops__pipeline_run_log          None -> 0
+7 relation(s) differ

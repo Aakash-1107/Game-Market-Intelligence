@@ -1,0 +1,34 @@
+Diff vs fingerprint_post_layers_2026_09_29.json (cutoff 2026-09-29, mart_* -> rpt_* renamed)
+
+dim_game                                         55  content changed
+fact_critic_review                              184  identical
+fact_discount_episode                         2,072  NEW
+fact_player_activity                      8,063,598  identical
+fact_player_activity_daily                   29,014  NEW
+fact_player_activity_monthly                  4,939  identical
+fact_price_daily                            149,679  NEW
+fact_price_snapshot                          55,375  identical
+fact_reviews                                 82,993  identical
+game_coverage                                    55  content changed
+int_player_activity_daily                    29,014  identical
+int_player_activity_monthly__merged           4,939  identical
+int_price_daily                             149,679  identical
+int_sale_episodes                             2,072  identical
+int_tracked_games                                55  identical
+manual_id_overrides                              15  identical
+rpt_activity_health                              55  identical
+rpt_discount_effect                           2,068  identical
+rpt_game_lifecycle                               55  identical
+rpt_market_anomalies                         28,010  identical
+seed_steam_release_context                        7  identical
+stg_itad__price_history                      56,621  identical
+stg_kaggle__steamcharts_monthly             612,265  identical
+stg_opencritic__reviews                         184  identical
+stg_source_id_mapping                            70  identical
+stg_steam__app_details                           55  identical
+stg_steam__app_list                         184,973  identical
+stg_steam__player_counts                  8,342,249  identical
+stg_steam__reviews                           83,667  identical
+stg_steam__reviews_summary                       56  identical
+stg_steamcharts__monthly                      4,939  identical
+tracked_games                                    55  identical

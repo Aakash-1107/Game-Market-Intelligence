@@ -1,0 +1,166 @@
+{
+  "dim_game": {
+    "rows": 55,
+    "fingerprint": "514193136478222826903",
+    "cutoff": null
+  },
+  "fact_critic_review": {
+    "rows": 184,
+    "fingerprint": "1629994209150333652234",
+    "cutoff": null
+  },
+  "fact_discount_episode": {
+    "rows": 2072,
+    "fingerprint": "19206613683829947521472",
+    "cutoff": null
+  },
+  "fact_player_activity": {
+    "rows": 8064580,
+    "fingerprint": "74393352358989884197564702",
+    "cutoff": "recorded_at"
+  },
+  "fact_player_activity_daily": {
+    "rows": 29014,
+    "fingerprint": "267337453924266260195654",
+    "cutoff": "activity_date"
+  },
+  "fact_player_activity_monthly": {
+    "rows": 4939,
+    "fingerprint": "44997491295281865746584",
+    "cutoff": null
+  },
+  "fact_price_daily": {
+    "rows": 149679,
+    "fingerprint": "1380136636917020565793820",
+    "cutoff": "price_date"
+  },
+  "fact_price_snapshot": {
+    "rows": 55375,
+    "fingerprint": "511293592222562667153024",
+    "cutoff": null
+  },
+  "fact_reviews": {
+    "rows": 82993,
+    "fingerprint": "764385791270352173266280",
+    "cutoff": null
+  },
+  "game_coverage": {
+    "rows": 55,
+    "fingerprint": "548653749259326299580",
+    "cutoff": null,
+    "dropped_columns": [
+      "hourly_rows",
+      "last_hourly_at"
+    ]
+  },
+  "int_player_activity_daily": {
+    "rows": 29014,
+    "fingerprint": "268995325870209976694222",
+    "cutoff": "activity_date"
+  },
+  "int_player_activity_monthly__merged": {
+    "rows": 4939,
+    "fingerprint": "45361325304484874439337",
+    "cutoff": null
+  },
+  "int_price_daily": {
+    "rows": 149679,
+    "fingerprint": "1379100565499738826232050",
+    "cutoff": "price_date"
+  },
+  "int_sale_episodes": {
+    "rows": 2072,
+    "fingerprint": "19176488143020506476072",
+    "cutoff": null
+  },
+  "int_tracked_games": {
+    "rows": 55,
+    "fingerprint": "498458147813083847628",
+    "cutoff": null
+  },
+  "manual_id_overrides": {
+    "rows": 15,
+    "fingerprint": "129923010756767269207",
+    "cutoff": null
+  },
+  "rpt_activity_health": {
+    "rows": 55,
+    "fingerprint": "584924426777795320033",
+    "cutoff": null
+  },
+  "rpt_discount_effect": {
+    "rows": 2068,
+    "fingerprint": "19054536992097035775736",
+    "cutoff": "sale_end"
+  },
+  "rpt_game_lifecycle": {
+    "rows": 55,
+    "fingerprint": "480637163808372767638",
+    "cutoff": null
+  },
+  "rpt_market_anomalies": {
+    "rows": 28010,
+    "fingerprint": "259688314960785426477272",
+    "cutoff": "activity_date"
+  },
+  "seed_steam_release_context": {
+    "rows": 7,
+    "fingerprint": "61299441023659274976",
+    "cutoff": null
+  },
+  "stg_itad__price_history": {
+    "rows": 56621,
+    "fingerprint": "520345128483310617466310",
+    "cutoff": null
+  },
+  "stg_kaggle__steamcharts_monthly": {
+    "rows": 612265,
+    "fingerprint": "5650715793170200732126956",
+    "cutoff": null
+  },
+  "stg_opencritic__reviews": {
+    "rows": 184,
+    "fingerprint": "1705015406175171243575",
+    "cutoff": null
+  },
+  "stg_source_id_mapping": {
+    "rows": 70,
+    "fingerprint": "623784101125695627258",
+    "cutoff": null
+  },
+  "stg_steam__app_details": {
+    "rows": 55,
+    "fingerprint": "581800639880076024407",
+    "cutoff": null
+  },
+  "stg_steam__app_list": {
+    "rows": 184973,
+    "fingerprint": "1709048509343582910138907",
+    "cutoff": null
+  },
+  "stg_steam__player_counts": {
+    "rows": 8343231,
+    "fingerprint": "76952274569734998118481305",
+    "cutoff": "recorded_at"
+  },
+  "stg_steam__reviews": {
+    "rows": 83667,
+    "fingerprint": "770324751317983574900590",
+    "cutoff": null
+  },
+  "stg_steam__reviews_summary": {
+    "rows": 56,
+    "fingerprint": "555237878552596071559",
+    "cutoff": null
+  },
+  "stg_steamcharts__monthly": {
+    "rows": 4939,
+    "fingerprint": "45070241940503231927449",
+    "cutoff": null
+  },
+  "tracked_games": {
+    "rows": 55,
+    "fingerprint": "548096148568813339609",
+    "cutoff": null
+  }
+}
