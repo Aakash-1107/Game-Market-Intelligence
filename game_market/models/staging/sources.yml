@@ -2,10 +2,10 @@ version: 2
 
 sources:
   - name: steam_raw
-    description: "Raw Steam data stored in RustFS object storage"
+    description: "Raw Steam data stored in AWS S3"
     tables:
       - name: player_counts
-        description: "Hourly concurrent player counts per game, ingested via Prefect"
+        description: "Hourly concurrent player counts per game, written by src/ingestion/steam_player_counts.py"
         meta:
           external_location: "read_parquet('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/player_counts/[0-9][0-9][0-9][0-9]/**/*.parquet')"
         columns:
@@ -41,7 +41,7 @@ sources:
           external_location: "read_json('s3://{{ env_var('AWS_BUCKET') }}/raw/steam/app_details/*/*/*/app_details_*.json', columns = struct_pack(steam_app_id := 'BIGINT', fetched_at_utc := 'TIMESTAMP', data := 'JSON'), filename = true)"
         columns:
           - name: steam_app_id
-            description: "Steam App ID — matches game_source_mapping"
+            description: "Steam App ID"
           - name: fetched_at_utc
             description: "UTC timestamp when the file was written"
           - name: data

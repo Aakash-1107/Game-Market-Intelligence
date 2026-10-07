@@ -4,7 +4,7 @@
     python flows/daily_market_refresh.py 1145360          # only these games (testing a new game)
     python flows/daily_market_refresh.py --serve          # keep running, schedule daily at 07:00 Europe/Berlin
 
-Runs locally without Prefect Cloud (the ephemeral profile starts a temporary local API).
+Runs on the local machine; no work pool or deployment needed.
 Stop the Streamlit dashboard first: dbt needs the write lock on the DuckDB file.
 
 Tasks:
@@ -26,11 +26,11 @@ node to dbt_node_result from target/run_results.json. Logging failures only warn
 A per-game task retries only its failed games, once, 5 minutes later (Steam's rate window); it fails if
 any game still fails or the script raises. Reruns are safe: raw S3 is append-only and staging keeps the
 latest fetch per natural key. The gate is deliberately strict: any failed ingestion task blocks dbt build.
-Not included: the hourly player counts (separate deployment), the 5-minute backfill
-(src/ingestion/backfill_player_counts.py, run by hand) and OpenCritic (manual-only).
+Not included: the hourly player counts (src/ingestion/steam_player_counts.py, scheduled separately), the 5-minute
+backfill (src/ingestion/backfill_player_counts.py, run by hand) and OpenCritic (manual-only).
 
 Technical debt: dbt builds a local DuckDB file, so this flow must run on the machine that holds
-data/game_market.duckdb (local run / serve), not on the managed work pool the hourly flow uses.
+data/game_market.duckdb (local run / serve).
 """
 import os
 import re

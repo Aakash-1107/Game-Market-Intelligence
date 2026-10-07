@@ -1,4 +1,4 @@
--- Grain: one row per game per UTC day (5-minute backfill days and hourly live days).
+-- Grain: one row per game per UTC day (5-minute backfill days and hourly collection days).
 -- Thin gold copy of int_player_activity_daily: aggregation and completeness logic stay in intermediate.
 
 with daily as (

@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: stg_steam__app_list
-    description: "Cleaned Steam app catalogue from RustFS CSV"
+    description: "Cleaned Steam app catalogue from the CSV in S3 (raw/steam/app_list/)"
     columns:
       - name: steam_app_id
         description: "Steam App ID"

@@ -196,7 +196,7 @@ models:
                 values: ['steamcharts', 'kaggle']
 
   - name: fact_player_activity_daily
-    description: "One row per game per UTC day of player activity (5-minute backfill and hourly live days). Thin copy of int_player_activity_daily."
+    description: "One row per game per UTC day of player activity (5-minute backfill days and hourly collection days). Thin copy of int_player_activity_daily."
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

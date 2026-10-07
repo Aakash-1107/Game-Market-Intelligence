@@ -19,7 +19,8 @@ BADGE = {"ok": ":green-badge[:material/check_circle: OK]", "warn": ":orange-badg
 page_header(
     "Pipeline health",
     "Is the pipeline healthy right now, and if not, where did it fail? Three layers of monitoring feed this page: "
-    "Prefect Cloud shows whether a flow ran; the ingestion log records every request per game; these checks turn "
+    "Run histories show whether a flow ran (Prefect for the daily flow, GitHub Actions for the hourly script); the "
+    "ingestion log records every request per game; these checks turn "
     "both into one status per component, computed at the moment you open the page.",
 )
 
@@ -74,7 +75,7 @@ if not snapshot:   # live views over Neon: not in the public snapshot
                 st.caption(f"Latest attempt {r.last_status.replace('_', ' ')}"
                            + (f": {str(r.last_error)[:220]}" if pd.notna(r.last_error) else ""))
 
-    st.caption("Not monitored stage by stage: the hourly player-count flow (Prefect managed pool). Its health comes from "
+    st.caption("Not monitored stage by stage: the hourly player-count script (GitHub Actions). Its health comes from "
                "the ingestion log (one row per game per hour) and data freshness.  \n"
                "The tables below cover the daily flow only: its stage runs (log entries), games collected per source "
                "(full daily flow runs) and its dbt builds (latest warehouse builds).")
