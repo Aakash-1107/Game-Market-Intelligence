@@ -38,8 +38,10 @@ pip install dbt-duckdb streamlit prefect
 cp .env.example .env                # PowerShell: Copy-Item .env.example .env
 ```
 
-Fill in `.env`: `AWS_ACCESS_KEY`, `AWS_SECRET_KEY`, `AWS_REGION`, `AWS_BUCKET`, `ITAD_API_KEY`, and `DATABASE_URL`
-if you use the log database. Every variable is explained in `.env.example`. Never commit `.env`.
+Fill in `.env`. Required: `AWS_ACCESS_KEY`, `AWS_SECRET_KEY`, `AWS_REGION`, `AWS_BUCKET` (ingestion and dbt) and
+`ITAD_API_KEY` (daily flow). Optional: `DATABASE_URL` for the log database; without it, build manually with
+`dbt build --target analytics --exclude tag:observability` (B3.2). The settings with defaults are commented out; leave
+them so, in particular `DUCKDB_PATH`. Every variable is explained in `.env.example`. Never commit `.env`.
 
 ## A3. Create the log tables (skip if you have no log database)
 
@@ -323,8 +325,9 @@ The daily sources are expected once a day, so a `warn` on a day you did not star
 
 The flow loads active games, resolves ITAD IDs, then runs prices, app details, reviews and SteamCharts in parallel
 (each retries only its failed games once, five minutes later), checks that the newest hourly file is at most 3 hours
-old, and runs `dbt build` only if all of that succeeded. If any task failed, `dbt build` is skipped and the flow run
-is marked failed. This is intended: models are never built on a half-refreshed source.
+old, and runs `dbt build` only if all of that succeeded (first `dbt deps` if the dbt packages are not installed, as on
+a fresh clone). If any task failed, `dbt build` is skipped and the flow run is marked failed. This is intended: models
+are never built on a half-refreshed source.
 
 Reruns are safe. Raw S3 is append-only, and staging keeps the latest fetch per natural key.
 
@@ -333,7 +336,7 @@ Reruns are safe. Raw S3 is append-only, and staging keeps the latest fetch per n
 From `game_market/`:
 
 ```bash
-dbt deps                                                    # first time only (dbt_utils)
+dbt deps                                                    # first time only (dbt_utils); the daily flow does this itself
 dbt build                                                   # full: needs S3 credentials and DATABASE_URL
 dbt build --target analytics --exclude tag:observability    # without the log database
 dbt build --select +rpt_discount_effect                     # one model and everything it depends on
@@ -442,9 +445,9 @@ Never edit a mart table by hand. Fix the source or the model and rebuild.
 ## C4. Dashboard shows no or stale data
 
 1. Check when the last `dbt build` succeeded (Pipeline health, `dbt_build` row).
-2. If the page shows an error about the DuckDB file, check that `data/game_market.duckdb` exists. The dashboard
-   always opens that fixed path (`dashboard/db.py`) and ignores `DUCKDB_PATH`. dbt does use `DUCKDB_PATH`, so if you
-   point it at another file, the dashboard will not see that build.
+2. If the page shows an error about the DuckDB file, check that the file exists: `data/game_market.duckdb`, or
+   `DUCKDB_PATH` if set. dbt, the dashboard and the daily flow resolve `DUCKDB_PATH` the same way (a relative path from
+   `game_market/`), so they always use the same file.
 3. Pipeline health empty: `DATABASE_URL` missing or the database unreachable. This affects only that page.
 
 ## C5. Numbers changed after a rebuild

@@ -171,7 +171,8 @@ def main(app_ids: list[int] | None = None) -> dict:
     else:
         app_ids = active
 
-    if not PART1_DIR.is_dir():
+    # empty value: Path("") is the working directory, which is_dir() would accept
+    if not os.environ["PLAYER_COUNT_HISTORY_PART1_DIR"] or not PART1_DIR.is_dir():
         sys.exit(f"PLAYER_COUNT_HISTORY_PART1_DIR is not a folder: {PART1_DIR}")
 
     s3_client = get_s3_client()

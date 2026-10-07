@@ -30,18 +30,21 @@ models:
     description: One row per tracked game per calendar day (UTC) of Steam price, forward-filled between ITAD price events.
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: [steam_app_id, price_date]
+          arguments:
+            combination_of_columns: [steam_app_id, price_date]
     columns:
       - name: price_amount
         tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
+              arguments:
+                min_value: 0
       - name: discount_pct
         tests:
           - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 100
+              arguments:
+                min_value: 0
+                max_value: 100
       - name: is_on_sale
         description: "\"Sale\" = Steam discount period (price promotion), not units sold. True when the game is discounted on Steam that day."
 
@@ -49,7 +52,8 @@ models:
     description: One row per tracked game per calendar day (UTC) of player activity.
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: [steam_app_id, activity_date]
+          arguments:
+            combination_of_columns: [steam_app_id, activity_date]
 
   - name: int_sale_episodes
     description: "\"Sale\" here means a Steam discount period (price promotion), not units sold. One row per Steam sale episode per game (consecutive is_on_sale days)."

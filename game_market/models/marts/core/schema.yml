@@ -55,8 +55,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('dim_game')
-              field: game_key
+              arguments:
+                to: ref('dim_game')
+                field: game_key
       - name: steam_app_id
         description: "Steam App ID"
         tests:
@@ -74,7 +75,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['hourly', '5min', 'monthly']
+              arguments:
+                values: ['hourly', '5min', 'monthly']
 
   - name: fact_reviews
     description: >
@@ -138,7 +140,8 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: [true, false]
+              arguments:
+                values: [true, false]
 
   - name: fact_critic_review
     description: "One row per critic review per game. Grain: one outlet review of one game at one published date."
@@ -151,14 +154,16 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('dim_game')
-              field: game_key
+              arguments:
+                to: ref('dim_game')
+                field: game_key
       - name: np_score
         tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 100
+              arguments:
+                min_value: 0
+                max_value: 100
       - name: published_at
         tests:
           - not_null

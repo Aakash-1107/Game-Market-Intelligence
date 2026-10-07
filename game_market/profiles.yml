@@ -11,8 +11,9 @@ game_market:
   outputs:
     dev:
       type: duckdb
-      # relative to game_market/ (where dbt runs); set DUCKDB_PATH to an absolute path to use another file
-      path: "{{ env_var('DUCKDB_PATH', '../data/game_market.duckdb') }}"
+      # relative to game_market/ (where dbt runs); set DUCKDB_PATH to an absolute path to use another file.
+      # `env_var('X', '') or default`: an empty value (X= in .env) falls back to the default instead of failing
+      path: "{{ env_var('DUCKDB_PATH', '') or '../data/game_market.duckdb' }}"
       threads: 1                 # 4 parallel S3 scans ran out of memory on a 5.8 GB machine (2026-09-28)
       extensions:
         - httpfs
@@ -39,7 +40,7 @@ game_market:
 
     analytics:
       type: duckdb
-      path: "{{ env_var('DUCKDB_PATH', '../data/game_market.duckdb') }}"
+      path: "{{ env_var('DUCKDB_PATH', '') or '../data/game_market.duckdb' }}"
       threads: 1
       config_options:            # see dev
         memory_limit: "{{ env_var('DUCKDB_MEMORY_LIMIT', '') or '2GB' }}"

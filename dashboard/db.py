@@ -1,4 +1,5 @@
 import os
+import sys
 
 import duckdb
 import pandas as pd
@@ -7,8 +8,13 @@ import streamlit as st
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = ROOT / "data" / "game_market.duckdb"
+sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
+
+from src.common.duckdb_path import duckdb_path  # noqa: E402
+
+# the file dbt builds: DUCKDB_PATH (relative paths resolved from game_market/, like dbt) or data/game_market.duckdb
+DB_PATH = duckdb_path()
 
 
 @st.cache_resource

@@ -31,9 +31,12 @@ import duckdb
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
-DB_PATH = os.getenv("DUCKDB_PATH", str(ROOT / "data" / "game_market.duckdb"))
+from src.common.duckdb_path import duckdb_path  # noqa: E402
+
+DB_PATH = str(duckdb_path())   # the file dbt writes (same resolution as profiles.yml)
 CUTOFF = "2026-09-28 00:00:00+00"
 
 # relation -> column to cut at CUTOFF

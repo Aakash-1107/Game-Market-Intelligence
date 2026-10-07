@@ -13,7 +13,8 @@ Tasks:
   3. in parallel, each with a retry of failed games and ingestion_log logging:
      ITAD prices, Steam app details, Steam reviews (+ lifetime summary), SteamCharts monthly
   4. freshness check: newest hourly player-count file in S3 is at most FRESHNESS_MAX_AGE_HOURS old
-  5. dbt build, only if 2-4 all succeeded; otherwise skipped and the flow run is marked failed.
+  5. dbt build, only if 2-4 all succeeded; otherwise skipped and the flow run is marked failed. Runs dbt deps
+     first when a package from package-lock.yml is missing (fresh clone).
      Target dev (everything) when the log database is reachable, else target analytics without the observability
      models (tag:observability); analytics never depends on Neon.
   6. run summary (counts per task, dbt PASS/WARN/ERROR) in the Prefect log
@@ -53,6 +54,7 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 load_dotenv(ROOT / ".env")
 
+from src.common.duckdb_path import duckdb_path  # noqa: E402
 from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
 from src.ingestion import itad_price_history, steam_app_details, steam_reviews, steamcharts_monthly  # noqa: E402
 from src.ingestion.resolve_ids import resolve_itad_ids  # noqa: E402
@@ -65,12 +67,13 @@ STAGES = {"resolve_ids": "resolve_ids", "prices": "ingest_prices", "app_details"
           "dbt_build": "dbt_build"}
 
 DBT_PROJECT_DIR = ROOT / "game_market"
-DUCKDB_PATH = Path(os.getenv("DUCKDB_PATH", str(ROOT / "data" / "game_market.duckdb")))
-FRESHNESS_MAX_AGE_HOURS = float(os.getenv("FRESHNESS_MAX_AGE_HOURS", "3"))   # hourly schedule: 2 missed runs tolerated
+DUCKDB_PATH = duckdb_path()   # the file dbt writes (same resolution as profiles.yml)
+# `or`, not a getenv default: an empty value in .env (VAR=) counts as unset
+FRESHNESS_MAX_AGE_HOURS = float(os.getenv("FRESHNESS_MAX_AGE_HOURS") or "3")   # hourly schedule: 2 missed runs tolerated
 HOURLY_PREFIX = "raw/steam/player_counts/"
 # dbt threads for the flow's build (overrides profiles.yml). 1 by default: on a 5.8 GB machine, 4 parallel
 # DuckDB queries over the S3 JSON ran out of memory on 2026-09-28; 1 thread builds in ~1.7 min.
-DBT_THREADS = os.getenv("DBT_THREADS", "1")
+DBT_THREADS = os.getenv("DBT_THREADS") or "1"
 
 # resolve_ids: a Prefect retry reruns it (it has no per-game failures, only crashes)
 RESOLVE_RETRIES = 1
@@ -238,17 +241,53 @@ def dbt_mode_args() -> list[str]:
     return ["--target", "analytics", "--exclude", "tag:observability"]
 
 
+# DuckDB's error when another process holds the file: Linux/macOS "Could not set lock on file ... Conflicting lock",
+# Windows "being used by another process ... File is already open in"
+_LOCK_MARKERS = ("could not set lock", "conflicting lock", "used by another process", "already open in")
+
+
+def _is_lock_error(text: str) -> bool:
+    return any(marker in text.lower() for marker in _LOCK_MARKERS)
+
+
+def _ensure_dbt_packages(dbt: Path) -> None:
+    """Run `dbt deps` when a package from package-lock.yml is not installed (dbt_packages/ is gitignored, so a fresh
+    clone has none and dbt build would fail on the first dbt_utils macro)."""
+    import yaml   # installed with dbt-core
+    lock = yaml.safe_load((DBT_PROJECT_DIR / "package-lock.yml").read_text(encoding="utf-8")) or {}
+    missing = [p["name"] for p in lock.get("packages", [])
+               if not (DBT_PROJECT_DIR / "dbt_packages" / p["name"]).is_dir()]
+    if not missing:
+        return
+    get_run_logger().info(f"dbt: package(s) not installed ({', '.join(missing)}); running dbt deps")
+    proc = subprocess.run(
+        [str(dbt), "deps", "--no-use-colors", "--profiles-dir", str(DBT_PROJECT_DIR)],
+        cwd=DBT_PROJECT_DIR, env=os.environ.copy(), capture_output=True, text=True, encoding="utf-8",
+        errors="replace",
+    )
+    if proc.returncode != 0:
+        raise TaskFailed(f"dbt deps failed (exit {proc.returncode}): {(proc.stdout + proc.stderr)[-2000:]}")
+
+
 def _dbt_build() -> dict:
     logger = get_run_logger()
-    try:   # fail fast with a clear message instead of a dbt stack trace
+    # fail fast with a clear message instead of a dbt stack trace. DuckDB does not create a missing folder, and its
+    # IOException covers both a lock and a bad path, so tell them apart.
+    if not DUCKDB_PATH.parent.is_dir():
+        raise TaskFailed(f"DuckDB folder {DUCKDB_PATH.parent} does not exist: create it or fix DUCKDB_PATH "
+                         "(a relative path is resolved from game_market/)")
+    try:
         duckdb.connect(str(DUCKDB_PATH)).close()
     except duckdb.IOException as e:
-        raise TaskFailed(
-            f"DuckDB file {DUCKDB_PATH} is locked by another process (usually the Streamlit dashboard). "
-            f"Stop it and rerun. ({e})"
-        ) from e
+        if _is_lock_error(str(e)):
+            raise TaskFailed(
+                f"DuckDB file {DUCKDB_PATH} is locked by another process (usually the Streamlit dashboard). "
+                f"Stop it and rerun. ({e})"
+            ) from e
+        raise TaskFailed(f"DuckDB file {DUCKDB_PATH} cannot be opened (check DUCKDB_PATH): {e}") from e
 
     dbt = Path(sys.executable).parent / ("dbt.exe" if os.name == "nt" else "dbt")
+    _ensure_dbt_packages(dbt)
     started = datetime.now(timezone.utc)
     proc = subprocess.run(
         [str(dbt), "build", "--no-use-colors", "--threads", DBT_THREADS, "--profiles-dir", str(DBT_PROJECT_DIR),
@@ -265,7 +304,7 @@ def _dbt_build() -> dict:
             logger.info(line)
     m = re.search(r"Done\. PASS=(\d+) WARN=(\d+) ERROR=(\d+) SKIP=(\d+)", output)
     summary = dict(zip(("pass", "warn", "error", "skip"), map(int, m.groups()))) if m else {}
-    if "lock" in output.lower() and "duckdb" in output.lower() and proc.returncode != 0:
+    if proc.returncode != 0 and "duckdb" in output.lower() and _is_lock_error(output):
         raise TaskFailed("dbt build: DuckDB file is locked (stop the Streamlit dashboard and rerun)")
     if proc.returncode != 0:
         logger.error(output[-3000:])

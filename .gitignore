@@ -73,8 +73,10 @@ analytical-questions.txt
 # Rust
 target/
 
-# DuckDB
-data/
+# DuckDB: everything under data/ except the placeholder that makes a fresh clone have the folder (DuckDB does not
+# create a missing folder). data/* rather than data/, so the ! rule can re-include the file.
+data/*
+!data/.gitkeep
 *.duckdb
 
 rustfs_logs.txt

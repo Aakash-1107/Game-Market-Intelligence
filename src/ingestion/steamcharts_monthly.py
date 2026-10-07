@@ -7,7 +7,8 @@ game to ingestion_log (Neon). Numeric parsing happens in dbt staging.
 Run from project root:
     python src/ingestion/steamcharts_monthly.py                 # all active games
     python src/ingestion/steamcharts_monthly.py 105600 413150   # only these (must be active)
-Exit code: 0 ok, 1 some games failed, 2 stopped by bot protection.
+Exit code: 0 ok, 1 some games failed, 2 stopped by bot protection. An error that would fail every game the same
+way (missing dependency such as lxml, wrong S3 credentials or bucket) stops the run at once with RunError.
 """
 import io
 import os
@@ -19,6 +20,7 @@ from pathlib import Path
 
 import boto3
 import pandas as pd
+from botocore.exceptions import ClientError, NoCredentialsError
 import requests
 from dotenv import load_dotenv
 
@@ -46,6 +48,25 @@ NEON_URL_ENV = "DATABASE_URL"
 
 class BotChallengeError(RuntimeError):
     """Raised when the site serves a bot-protection challenge. The run must stop."""
+
+
+class RunError(RuntimeError):
+    """An error that is not about one game (missing dependency, S3 credentials or bucket): every game would fail the
+    same way, so the run stops at once instead of failing each game and being retried."""
+
+
+S3_RUN_ERROR_CODES = {"InvalidAccessKeyId", "SignatureDoesNotMatch", "AccessDenied", "NoSuchBucket"}
+
+
+def run_level_error(exc: Exception) -> str | None:
+    """Describe exc if it would fail every game the same way, else None (a per-game failure)."""
+    if isinstance(exc, ImportError):   # e.g. pd.read_html without lxml
+        return f"missing dependency: {exc}"
+    if isinstance(exc, NoCredentialsError):
+        return f"S3 credentials missing: {exc}"
+    if isinstance(exc, ClientError) and exc.response.get("Error", {}).get("Code") in S3_RUN_ERROR_CODES:
+        return f"S3 credentials or bucket wrong: {exc}"
+    return None
 
 
 def check_robots(session: requests.Session) -> None:
@@ -161,6 +182,8 @@ def run(requested: list[int] | None = None) -> dict:
             except BotChallengeError:
                 raise
             except Exception as exc:  # per-game failure: log and continue
+                if (reason := run_level_error(exc)) is not None:
+                    raise RunError(f"steamcharts: stopped at app {app_id}, {reason}") from exc
                 log_row(conn, app_id, "failed", getattr(locals().get("r"), "status_code", None),
                         None, f"{type(exc).__name__}: {exc}"[:1000])
                 counts["failed"] += 1

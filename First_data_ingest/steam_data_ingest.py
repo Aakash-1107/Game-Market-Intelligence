@@ -24,8 +24,14 @@ GAMES = load_tracked_games()
 DATABASE_URL   = os.getenv("DATABASE_URL")
 AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
 AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
-AWS_REGION     = os.getenv("AWS_REGION", "eu-central-1")
-AWS_BUCKET     = os.getenv("AWS_BUCKET", "game-market-raw")
+AWS_REGION     = os.getenv("AWS_REGION")
+AWS_BUCKET     = os.getenv("AWS_BUCKET")
+
+# no defaults: a wrong bucket or region would upload somewhere else without an error. Empty counts as missing
+# (GitHub Actions passes an unset secret as an empty string).
+_missing = [name for name in ("AWS_ACCESS_KEY", "AWS_SECRET_KEY", "AWS_REGION", "AWS_BUCKET") if not os.getenv(name)]
+if _missing:
+    raise RuntimeError(f"Missing environment variable(s): {', '.join(_missing)} (see .env.example)")
 
 # per-request retries: timeouts, 429 and 5xx are retried after 1 s, 2 s, 4 s; other errors fail at once
 RETRY_DELAYS_SECONDS = (1, 2, 4)
