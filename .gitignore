@@ -79,6 +79,9 @@ data/*
 !data/.gitkeep
 *.duckdb
 
+# Build output: the public snapshot (src/utils/build_snapshot.py), published as a GitHub Release asset
+dist/
+
 rustfs_logs.txt
 duckdb_inspect.py
 test_opencritic.py
