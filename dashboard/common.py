@@ -400,8 +400,8 @@ SOURCES_FOOTER = (
     "[SteamCharts](https://steamcharts.com). 5-minute player history 2017–2020: Mendeley dataset \"Steam Games "
     "Dataset: Player count history, Price history and data about games\" "
     "([doi:10.17632/ycy3sy3vj2.1](https://doi.org/10.17632/ycy3sy3vj2.1)), "
-    "[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), shown aggregated. Additional monthly players "
-    "(to Sept 2025): Kaggle \"Steam Monthly Average Players\" by Victor Laputsky (CC0). "
+    "[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), shown only as daily aggregates and the results derived "
+    "from them. Validation only, no data shown: Kaggle \"Steam Monthly Average Players\" by Victor Laputsky (CC0). "
     "Collection frozen on 7 Oct 2026."
 )
 

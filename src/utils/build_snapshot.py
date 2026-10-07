@@ -31,7 +31,9 @@ load_dotenv(ROOT / ".env")
 from src.common.duckdb_path import duckdb_path  # noqa: E402
 
 DEFAULT_OUT = ROOT / "dist" / "game_market_snapshot.duckdb"
-COLLECTION_START = "2026-09-14"
+# first hourly reading; stored as 18:29 because readings before 2026-09-20 carry Berlin time labelled as UTC
+# (docs/TRD.md, collection incidents)
+COLLECTION_START = "2026-09-13 16:29:00+00"
 COLLECTION_END = "2026-10-07 14:47:00+00"   # final hourly reading (player_counts_20261007_1447.parquet)
 
 # schema.table -> (select list, where clause)
@@ -63,8 +65,8 @@ SOURCES = (
     "SteamCharts (https://steamcharts.com): monthly player averages. "
     "Mendeley dataset 'Steam Games Dataset: Player count history, Price history and data about games' "
     "(DOI 10.17632/ycy3sy3vj2.1), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/): included only as "
-    "daily and monthly aggregates. "
-    "Kaggle 'Steam Monthly Average Players' by Victor Laputsky, CC0. "
+    "daily aggregates and the results derived from them. "
+    "Kaggle 'Steam Monthly Average Players' by Victor Laputsky, CC0: validation source only; it contributed no rows. "
     "Excluded: review text, reviewer and review IDs, raw files, staging and intermediate models, OpenCritic data, "
     "the 5-minute backfill rows."
 )
@@ -99,7 +101,7 @@ def build(source: Path, out: Path) -> dict[str, int]:
     con.execute("""
         create table meta.snapshot_info as select
             ?::timestamptz as snapshot_at,
-            ?::date        as collection_start,
+            ?::timestamptz as collection_start,
             ?::timestamptz as collection_end,
             ?              as git_commit,
             ?              as row_counts_json,
