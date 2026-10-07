@@ -20,13 +20,20 @@ with st.container(horizontal=True):  # wraps to 2x2 on narrow windows instead of
               "(every 5 minutes 2017–2020, hourly since Sept 2026).", border=True)
     st.metric("Price changes tracked", f"{k.price_changes:,}", help=f"Across {k.shops} online shops, including Steam.", border=True)
 
-# ---- Right now: the live hourly feed ------------------------------------------------------------
+# ---- Final week of collection: the hourly feed ---------------------------------------------------
 snap = live_snapshot()
 month = pd.Timestamp(cov.monthly_last)
 comparable = snap.dropna(subset=["vs_last_month"])
 up_row = comparable.loc[comparable["vs_last_month"].idxmax()]
 down_row = comparable.loc[comparable["vs_last_month"].idxmin()]
-vs_help = f"Average of the last 7 days compared with the {month:%B %Y} monthly average."
+# the 7 x 24 h before the final reading (live_snapshot), as calendar days
+week_start = live_last - pd.Timedelta(days=7)
+FINAL_WEEK = f"{week_start.day} {week_start:%b} – {live_last.day} {live_last:%b %Y}"
+vs_help = (f"Average of the final 7 days of collection ({FINAL_WEEK}) compared with the {month:%B %Y} monthly "
+           "average.")
+# games whose comparison month is their launch month: the launch rush is in the baseline
+launched = query("select name from marts.dim_game where date_trunc('month', release_date) = ? order by name",
+                 (month.to_pydatetime(),))["name"].tolist()
 c1, c2, c3 = st.columns(3)  # columns (not a horizontal container) so the three cards share one height
 with c1:
     st.metric(f"Latest reading: {live_last:%a %d %b, %H:%M}", f"{snap['now_players'].sum():,.0f}", border=True,
@@ -35,10 +42,10 @@ with c1:
                    f"({live_last:%a %d %b %Y, %H:%M}, Berlin time). Collection was frozen on 7 Oct 2026, so this is the "
                    "final reading.")
 with c2:
-    st.metric(f"Biggest mover vs. {month:%B}", up_row["name"], f"{pct(up_row['vs_last_month'], signed=True)}",
+    st.metric(f"Biggest rise, final week vs. {month:%B}", up_row["name"], f"{pct(up_row['vs_last_month'], signed=True)}",
               border=True, height="stretch", help=vs_help)
 with c3:
-    st.metric(f"Biggest drop vs. {month:%B}", down_row["name"], f"{pct(down_row['vs_last_month'], signed=True)}",
+    st.metric(f"Biggest drop, final week vs. {month:%B}", down_row["name"], f"{pct(down_row['vs_last_month'], signed=True)}",
               border=True, height="stretch", help=vs_help)
 
 N_MOVERS = 6  # rises and falls shown each
@@ -47,13 +54,13 @@ movers["direction"] = movers["vs_last_month"].map(lambda v: "Up" if v >= 0 else 
 # Explicit order: Vega-Lite drops sort="-x" when bars and labels are layered (the bars came out alphabetical)
 mover_order = movers.sort_values("vs_last_month", ascending=False)["name"].tolist()
 move_bars = alt.Chart(movers).mark_bar(cornerRadiusEnd=4, height=18).encode(
-    x=alt.X("vs_last_month:Q", title=f"Last 7 days vs. {month:%B %Y} average (compressed scale)",
+    x=alt.X("vs_last_month:Q", title=f"Final 7 days vs. {month:%B %Y} average (compressed scale)",
             scale=alt.Scale(type="symlog", constant=0.5, padding=36),  # padding: room for the end labels
             axis=alt.Axis(format="+%", values=[-0.8, -0.5, 0, 0.5, 1, 2, 5, 10])),
     y=alt.Y("name:N", sort=mover_order, title=None),
     color=alt.Color("direction:N", scale=alt.Scale(domain=["Up", "Down"], range=[UP, DOWN]), legend=None),
     tooltip=[alt.Tooltip("name:N", title="Game"),
-             alt.Tooltip("avg_7d:Q", title="Last 7 days, average", format=",.0f"),
+             alt.Tooltip("avg_7d:Q", title="Final 7 days, average", format=",.0f"),
              alt.Tooltip("last_month_avg:Q", title=f"{month:%B %Y} average", format=",.0f"),
              alt.Tooltip("vs_last_month:Q", title="Change", format="+.0%"),
              alt.Tooltip("now_players:Q", title="Latest reading", format=",.0f")])
@@ -62,17 +69,19 @@ move_labels = move_bars.mark_text(dx=4, align="left", color=INK_2).encode(
 move_labels_neg = move_bars.mark_text(dx=-4, align="right", color=INK_2).encode(
     text=alt.Text("vs_last_month:Q", format="+.0%"), color=alt.value(INK_2))
 chart_block(
-    "Which games gained or lost the most players this week?",
-    f"The {N_MOVERS} biggest rises and falls: each game's last 7 days compared with **its own {month:%B %Y} "
-    "average** (0% = no change).",
+    "Which games gained or lost the most players in the final week of collection?",
+    f"The {N_MOVERS} biggest rises and falls: each game's final 7 days ({FINAL_WEEK}) compared with **its own "
+    f"{month:%B %Y} average** (0% = no change).",
     alt.layer(move_bars,
               move_labels.transform_filter("datum.vs_last_month >= 0"),
               move_labels_neg.transform_filter("datum.vs_last_month < 0")).properties(height=300),
-    "The monthly pages stop at the last complete month, so big updates this month only show up here. "
-    "A jump like this usually means a major update, a new season or a launch on a new platform.",
+    f"The monthly pages stop at {month:%B %Y}, the last complete month, so changes in the final week only show up "
+    "here. A jump like this usually means a major update, a new season or a launch on a new platform.",
     how_label=None,
     details=(f"Out of the {len(comparable)} games with both numbers; one bar per game. The scale is compressed so a "
-             "+800% jump and a −50% dip both fit."),
+             "+800% jump and a −50% dip both fit."
+             + (f" Games that were released or left Early Access in {month:%B %Y} ({', '.join(launched)}) are compared "
+                "with their launch month, so a drop is expected." if launched else "")),
 )
 
 with st.expander("All games at the final reading"):
@@ -84,9 +93,9 @@ with st.expander("All games at the final reading"):
             "name": "Game",
             "now_players": st.column_config.NumberColumn("Latest reading", format="localized"),
             "peak_24h": st.column_config.NumberColumn("Peak, last 24 hours", format="localized"),
-            "avg_7d": st.column_config.NumberColumn("Average, last 7 days", format="localized"),
+            "avg_7d": st.column_config.NumberColumn("Average, final 7 days", format="localized"),
             "last_month_avg": st.column_config.NumberColumn(f"Average, {month:%b %Y}", format="localized"),
-            "vs_last_month": st.column_config.NumberColumn(f"7 days vs. {month:%b %Y}", format="percent"),
+            "vs_last_month": st.column_config.NumberColumn(f"Final 7 days vs. {month:%b %Y}", format="percent"),
         },
     )
     st.caption("Empty comparison = the game has no complete month yet.")

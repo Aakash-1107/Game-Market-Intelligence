@@ -8,6 +8,9 @@ from db import query
 
 cov = coverage()
 live_last = local(cov.live_last)
+# the 7 x 24 h before the final reading (live_snapshot), as calendar days; same wording as the Overview
+week_start = live_last - pd.Timedelta(days=7)
+FINAL_WEEK = f"{week_start.day} {week_start:%b} – {live_last.day} {live_last:%b %Y}"
 page_header(
     "Game explorer", "Pick any game to see everything we know about it: players, prices, and reviews.",
     period=f"monthly players {cov.monthly_first:%b %Y} – {cov.monthly_last:%b %Y} (complete months) · "
@@ -72,10 +75,11 @@ m1, m2, m3 = st.columns(3)
 if live is not None:
     vs = live.vs_last_month
     m1.metric("Players online, final reading", f"{live.now_players:,.0f}",
-              f"{pct(vs, signed=True)} this week vs. {live.last_month:%b %Y}" if pd.notna(vs) else None,
+              f"{pct(vs, signed=True)} final week vs. {live.last_month:%b %Y}" if pd.notna(vs) else None,
               help=f"Final hourly reading ({local(live.now_at):%d %b %Y, %H:%M}, Berlin time). The change compares the "
-                   f"average of the last 7 days ({live.avg_7d:,.0f}) with the {live.last_month:%B %Y} monthly average "
-                   f"({live.last_month_avg:,.0f} = 100%).", border=True, height="stretch")
+                   f"average of the final 7 days of collection ({FINAL_WEEK}: {live.avg_7d:,.0f}) with the "
+                   f"{live.last_month:%B %Y} monthly average ({live.last_month_avg:,.0f} = 100%).", border=True,
+              height="stretch")
 else:
     m1.metric("Players online, final reading", "—", help="No hourly readings for this game.", border=True, height="stretch")
 m2.metric("Busiest month ever", f"{k.best_month:,.0f}" if pd.notna(k.best_month) else "—",
@@ -143,8 +147,8 @@ if len(hourly) >= 24:
                     alt.Chart(ref).mark_text(align="left", x=4, dy=-7, color=INK_2, fontSize=11).encode(
                         y="y:Q", text="label:N")]
     hs = hourly.dropna().set_index("recorded_at")["player_count"]
-    title = (f"At the end of collection: {game} was {pct(live.vs_last_month, signed=True)} this week compared with its "
-             f"{live.last_month:%B} average" if live is not None and pd.notna(live.vs_last_month)
+    title = (f"At the end of collection: {game} was {pct(live.vs_last_month, signed=True)} in the final week compared "
+             f"with its {live.last_month:%B} average" if live is not None and pd.notna(live.vs_last_month)
              else f"{game}, hour by hour since {hs.index.min():%d %b}")
     chart_block(
         title,
