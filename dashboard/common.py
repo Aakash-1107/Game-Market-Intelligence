@@ -96,7 +96,7 @@ ASSETS = Path(__file__).resolve().parent / "assets"
 
 # Valve brand rules: the logo stands alone (no words attached to it) and is never the most prominent element,
 # so this attribution text is shown separately from the logo.
-STEAM_ATTRIBUTION = ("Live player counts, player reviews and game details come from the Steam Web API. "
+STEAM_ATTRIBUTION = ("Hourly player counts, player reviews and game details come from the Steam Web API. "
                      "Steam and the Steam logo are trademarks and/or registered trademarks of Valve Corporation "
                      "in the U.S. and/or other countries. This project is not affiliated with or endorsed by Valve.")
 
@@ -180,8 +180,12 @@ def coverage() -> pd.Series:
         select
             (select min(activity_month) from marts.fact_player_activity_monthly)                  as monthly_first,
             (select max(activity_month) from marts.fact_player_activity_monthly)                  as monthly_last,
-            (select min(recorded_at) from marts.fact_player_activity where data_resolution = '5min') as fine_first,
-            (select max(recorded_at) from marts.fact_player_activity where data_resolution = '5min') as fine_last,
+            -- 5-minute range from the daily table (the public snapshot has no 5-minute rows): UTC days as
+            -- timestamptz at 00:00 UTC; pages show these as days or months, identical to the raw first/last reading
+            (select timezone('UTC', min(activity_date)::timestamp) from marts.fact_player_activity_daily
+             where data_resolution = '5min')                                                     as fine_first,
+            (select timezone('UTC', max(activity_date)::timestamp) from marts.fact_player_activity_daily
+             where data_resolution = '5min')                                                     as fine_last,
             (select min(recorded_at) from marts.fact_player_activity where data_resolution = 'hourly') as live_first,
             (select max(recorded_at) from marts.fact_player_activity where data_resolution = 'hourly') as live_last,
             (select gap_start from biggest)                                                       as live_gap_start,
@@ -196,7 +200,10 @@ def pipeline_counts() -> pd.Series:
             (select count(*) from marts.dim_game)                                    as games,
             (select count(*) from marts.dim_game where is_free)                      as free_games,
             (select min(activity_month) from marts.fact_player_activity_monthly)     as first_month,
-            (select count(*) from marts.fact_player_activity)                        as readings,
+            -- hourly rows + 5-minute readings counted from the daily table (the public snapshot has no 5-minute rows)
+            (select count(*) from marts.fact_player_activity where data_resolution <> '5min')
+              + (select coalesce(sum(observation_count), 0) from marts.fact_player_activity_daily
+                 where data_resolution = '5min')::bigint                             as readings,
             (select count(*) from marts.fact_price_snapshot)                         as price_changes,
             (select count(distinct shop_id) from marts.fact_price_snapshot)          as shops,
             (select count(*) from marts.fact_reviews)                                as reviews
@@ -383,3 +390,22 @@ def sale_bands(sales: pd.DataFrame, x_dom: list) -> list[alt.Chart]:
                      alt.Tooltip("max_discount_pct:Q", title="Discount %")],
         )
     ]
+
+
+# Shown at the bottom of every page (dashboard/home.py). Licences: Mendeley dataset CC BY 4.0 (attribution required),
+# Kaggle dataset CC0; Steam and IsThereAnyDeal data used under their API terms.
+SOURCES_FOOTER = (
+    "**Data sources.** Data powered by Steam (player counts, game details, review votes); not affiliated with or "
+    "endorsed by Valve. Prices: [IsThereAnyDeal](https://isthereanydeal.com). Monthly players: "
+    "[SteamCharts](https://steamcharts.com). 5-minute player history 2017–2020: Mendeley dataset \"Steam Games "
+    "Dataset: Player count history, Price history and data about games\" "
+    "([doi:10.17632/ycy3sy3vj2.1](https://doi.org/10.17632/ycy3sy3vj2.1)), "
+    "[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), shown aggregated. Additional monthly players "
+    "(to Sept 2025): Kaggle \"Steam Monthly Average Players\" by Victor Laputsky (CC0). "
+    "Collection frozen on 7 Oct 2026."
+)
+
+
+def sources_footer() -> None:
+    st.divider()
+    st.caption(SOURCES_FOOTER)

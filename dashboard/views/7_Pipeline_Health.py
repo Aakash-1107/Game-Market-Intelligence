@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from common import DAY_AXIS, FLAT, chart_block, local, page_header
-from db import ops_attached, query, query_live
+from db import is_snapshot, ops_attached, query, query_live
 
 LABELS = {
     "hourly_player_counts": "Hourly player counts",
@@ -23,82 +23,88 @@ page_header(
     "both into one status per component, computed at the moment you open the page.",
 )
 
-if not ops_attached():
+snapshot = is_snapshot()
+if snapshot:
+    final_day = query("select cast(collection_end at time zone 'UTC' as date) as d from meta.snapshot_info").iloc[0]["d"]
+    st.info("Collection frozen on 2026-10-07; live pipeline health isn't available in the public snapshot. Below is "
+            "the frozen collection history: how complete each day's collection was.", icon=":material/ac_unit:")
+elif not ops_attached():
     st.warning("The pipeline logs live in Neon and could not be reached (DATABASE_URL missing or the connection "
                "failed). All other pages work without them.", icon=":material/cloud_off:")
     st.stop()
 
-# ---- Status per component (a view: evaluated now, against the live logs) ------------------------
-health = query_live("""
-    select component, health_status, last_status, last_success_at, hours_since_last_success, last_error, checked_at
-    from observability.mart_pipeline_health
-""").set_index("component").reindex(list(LABELS)).reset_index()
-checked = local(health["checked_at"].iloc[0])
-n_fail = int((health["health_status"] == "fail").sum())
-n_warn = int((health["health_status"] == "warn").sum())
-if n_fail + n_warn == 0:
-    st.markdown("#### Everything is healthy")
-else:
-    parts = [f"{n} {word}" for n, word in ((n_fail, "failing"), (n_warn, "late")) if n]
-    st.markdown(f"#### {n_fail + n_warn} of {len(health)} components need attention ({', '.join(parts)})")
-st.caption(f"Checked {checked:%a %d %b %Y, %H:%M} (Berlin time). Refreshes every minute.  \n"
-           "**Failing:** never succeeded, or the latest attempt failed, partly failed or was skipped (for the "
-           "warehouse build also: a model error or a failing test). **Warning:** the latest attempt was fine, but the "
-           "last success is older than expected (2 h for hourly player counts, 26 h for the daily sources and the "
-           "build). Being late alone never turns a component red.")
+if not snapshot:   # live views over Neon: not in the public snapshot
+    # ---- Status per component (a view: evaluated now, against the live logs) ------------------------
+    health = query_live("""
+        select component, health_status, last_status, last_success_at, hours_since_last_success, last_error, checked_at
+        from observability.mart_pipeline_health
+    """).set_index("component").reindex(list(LABELS)).reset_index()
+    checked = local(health["checked_at"].iloc[0])
+    n_fail = int((health["health_status"] == "fail").sum())
+    n_warn = int((health["health_status"] == "warn").sum())
+    if n_fail + n_warn == 0:
+        st.markdown("#### Everything is healthy")
+    else:
+        parts = [f"{n} {word}" for n, word in ((n_fail, "failing"), (n_warn, "late")) if n]
+        st.markdown(f"#### {n_fail + n_warn} of {len(health)} components need attention ({', '.join(parts)})")
+    st.caption(f"Checked {checked:%a %d %b %Y, %H:%M} (Berlin time). Refreshes every minute.  \n"
+               "**Failing:** never succeeded, or the latest attempt failed, partly failed or was skipped (for the "
+               "warehouse build also: a model error or a failing test). **Warning:** the latest attempt was fine, but the "
+               "last success is older than expected (2 h for hourly player counts, 26 h for the daily sources and the "
+               "build). Being late alone never turns a component red.")
 
 
-def ago(hours: float) -> str:
-    if hours < 1:
-        return f"{hours * 60:.0f} min ago"
-    return f"{hours:.0f} h ago" if hours < 48 else f"{hours / 24:.0f} days ago"
+    def ago(hours: float) -> str:
+        if hours < 1:
+            return f"{hours * 60:.0f} min ago"
+        return f"{hours:.0f} h ago" if hours < 48 else f"{hours / 24:.0f} days ago"
 
 
-# The rules live in the model (mart_pipeline_health) and docs/PIPELINE.md; the caption above only summarises them.
-cols = st.columns(3)
-for i, r in health.iterrows():
-    with cols[i % 3].container(border=True, height="stretch"):
-        st.markdown(f"**{LABELS[r.component]}**  \n{BADGE[r.health_status]}")
-        if pd.notna(r.last_success_at):
-            st.markdown(f"Last success: {ago(r.hours_since_last_success)} "
-                        f"({local(r.last_success_at):%a %d %b, %H:%M})")
-        else:
-            st.markdown("Last success: never")
-        if r.last_status in ("failed", "partial", "skipped"):
-            st.caption(f"Latest attempt {r.last_status.replace('_', ' ')}"
-                       + (f": {str(r.last_error)[:220]}" if pd.notna(r.last_error) else ""))
+    # The rules live in the model (mart_pipeline_health) and docs/PIPELINE.md; the caption above only summarises them.
+    cols = st.columns(3)
+    for i, r in health.iterrows():
+        with cols[i % 3].container(border=True, height="stretch"):
+            st.markdown(f"**{LABELS[r.component]}**  \n{BADGE[r.health_status]}")
+            if pd.notna(r.last_success_at):
+                st.markdown(f"Last success: {ago(r.hours_since_last_success)} "
+                            f"({local(r.last_success_at):%a %d %b, %H:%M})")
+            else:
+                st.markdown("Last success: never")
+            if r.last_status in ("failed", "partial", "skipped"):
+                st.caption(f"Latest attempt {r.last_status.replace('_', ' ')}"
+                           + (f": {str(r.last_error)[:220]}" if pd.notna(r.last_error) else ""))
 
-st.caption("Not monitored stage by stage: the hourly player-count flow (Prefect managed pool). Its health comes from "
-           "the ingestion log (one row per game per hour) and data freshness.  \n"
-           "The tables below cover the daily flow only: its stage runs (log entries), games collected per source "
-           "(full daily flow runs) and its dbt builds (latest warehouse builds).")
+    st.caption("Not monitored stage by stage: the hourly player-count flow (Prefect managed pool). Its health comes from "
+               "the ingestion log (one row per game per hour) and data freshness.  \n"
+               "The tables below cover the daily flow only: its stage runs (log entries), games collected per source "
+               "(full daily flow runs) and its dbt builds (latest warehouse builds).")
 
-with st.expander("Show log entries"):
-    log = query_live("""
-        select started_at, flow_name, stage, status, records_in, records_out, error_message
-        from observability.mart_pipeline_stage_runs
-        order by started_at desc, stage
-        limit 30
-    """)
-    log["started_at"] = log["started_at"].map(lambda t: local(t).tz_localize(None))
-    st.dataframe(log, hide_index=True, column_config={
-        "started_at": st.column_config.DatetimeColumn("Time (Berlin)", format="ddd D MMM, HH:mm:ss"),
-        "flow_name": "Flow", "stage": "Stage", "status": "Status",
-        "records_in": st.column_config.NumberColumn("Records in", help="e.g. games attempted"),
-        "records_out": st.column_config.NumberColumn("Records out", help="e.g. games succeeded / files written"),
-        "error_message": st.column_config.TextColumn("Error", width="large"),
-    })
-    st.caption("The latest 30 stage runs of the daily flow (pipeline_run_log). The hourly player-count flow logs "
-               "per game in the ingestion log instead.")
+    with st.expander("Show log entries"):
+        log = query_live("""
+            select started_at, flow_name, stage, status, records_in, records_out, error_message
+            from observability.mart_pipeline_stage_runs
+            order by started_at desc, stage
+            limit 30
+        """)
+        log["started_at"] = log["started_at"].map(lambda t: local(t).tz_localize(None))
+        st.dataframe(log, hide_index=True, column_config={
+            "started_at": st.column_config.DatetimeColumn("Time (Berlin)", format="ddd D MMM, HH:mm:ss"),
+            "flow_name": "Flow", "stage": "Stage", "status": "Status",
+            "records_in": st.column_config.NumberColumn("Records in", help="e.g. games attempted"),
+            "records_out": st.column_config.NumberColumn("Records out", help="e.g. games succeeded / files written"),
+            "error_message": st.column_config.TextColumn("Error", width="large"),
+        })
+        st.caption("The latest 30 stage runs of the daily flow (pipeline_run_log). The hourly player-count flow logs "
+                   "per game in the ingestion log instead.")
 
 # ---- Hourly collection: completeness per UTC day -----------------------------------------------------
 hourly = query("""
     select activity_date, attempts, failures, succeeded_slots, expected, completeness_pct
     from observability.mart_ingestion_daily
     where component = 'hourly_player_counts'
-      and activity_date < cast(current_timestamp at time zone 'UTC' as date)  -- today is still collecting
+      and activity_date < ?   -- today is still collecting; in the snapshot, the final (partial) collection day
     order by activity_date
-""")
+""", (final_day if snapshot else pd.Timestamp.now(tz="UTC").date(),))
 hourly["activity_date"] = pd.to_datetime(hourly["activity_date"])
 tip = [alt.Tooltip("activity_date:T", title="Day (UTC)", format="%a %d %b %Y"),
        alt.Tooltip("completeness_pct:Q", title="Completeness %", format=".1f"),
@@ -189,25 +195,26 @@ else:
     st.caption("Games collected / attempted per source that day (all runs of the day together). Only days on which "
                "all four sources ran. Each run's stages are under *Show log entries* above.")
 
-# ---- dbt builds --------------------------------------------------------------------------------------
-runs = query_live("""
-    select started_at, finished_at, overall_status, models_ok, models_error, tests_pass, tests_warn, tests_fail,
-           node_time_s, invocation_id
-    from observability.mart_dbt_run_history
-    order by finished_at desc
-    limit 10
-""")
-st.markdown("##### Latest warehouse builds (daily flow)")
-if runs.empty:
-    st.info("No dbt build has been recorded by the daily flow yet. Manual `dbt build` runs are not recorded.")
-else:
-    for c in ("started_at", "finished_at"):
-        runs[c] = runs[c].map(lambda t: local(t).tz_localize(None) if pd.notna(t) else t)
-    st.dataframe(runs, hide_index=True, column_config={
-        "started_at": st.column_config.DatetimeColumn("Started (Berlin)", format="D MMM, HH:mm"),
-        "finished_at": st.column_config.DatetimeColumn("Finished (Berlin)", format="D MMM, HH:mm"),
-        "overall_status": "Result", "models_ok": "Models OK", "models_error": "Model errors",
-        "tests_pass": "Tests passed", "tests_warn": "Test warnings", "tests_fail": "Tests failed",
-        "node_time_s": st.column_config.NumberColumn("Build time (s)", format="%.0f"),
-        "invocation_id": "dbt invocation",
-    })
+if not snapshot:   # live view over Neon: not in the public snapshot
+    # ---- dbt builds --------------------------------------------------------------------------------------
+    runs = query_live("""
+        select started_at, finished_at, overall_status, models_ok, models_error, tests_pass, tests_warn, tests_fail,
+               node_time_s, invocation_id
+        from observability.mart_dbt_run_history
+        order by finished_at desc
+        limit 10
+    """)
+    st.markdown("##### Latest warehouse builds (daily flow)")
+    if runs.empty:
+        st.info("No dbt build has been recorded by the daily flow yet. Manual `dbt build` runs are not recorded.")
+    else:
+        for c in ("started_at", "finished_at"):
+            runs[c] = runs[c].map(lambda t: local(t).tz_localize(None) if pd.notna(t) else t)
+        st.dataframe(runs, hide_index=True, column_config={
+            "started_at": st.column_config.DatetimeColumn("Started (Berlin)", format="D MMM, HH:mm"),
+            "finished_at": st.column_config.DatetimeColumn("Finished (Berlin)", format="D MMM, HH:mm"),
+            "overall_status": "Result", "models_ok": "Models OK", "models_error": "Model errors",
+            "tests_pass": "Tests passed", "tests_warn": "Test warnings", "tests_fail": "Tests failed",
+            "node_time_s": st.column_config.NumberColumn("Build time (s)", format="%.0f"),
+            "invocation_id": "dbt invocation",
+        })

@@ -16,6 +16,10 @@ Capstone project of a Data Engineering programme (Weiterbildung). Formerly title
 Activity*. The focus is the engineering: ingestion, storage, modelling, data quality, orchestration and
 reproducibility. The dashboard demonstrates that the pipeline produces reusable analytical data.
 
+**Status: finished, collection frozen on 7 Oct 2026** (window 14 Sep – 7 Oct 2026). The final results are published as
+a read-only snapshot (GitHub Release asset) that the hosted dashboard reads, so they need no credentials. What the
+snapshot contains, the sources and their licences: [DATA_SOURCES.md](DATA_SOURCES.md).
+
 ## Overview
 
 **The problem**
@@ -142,10 +146,10 @@ of the same file.
 │   ├── ingestion/                           # one script per source, plus ID resolution and backfill
 │   ├── observability/run_log.py             # stage and dbt result logging
 │   ├── common/                              # tracked-games loader, log database connection
-│   ├── utils/                               # fingerprint tool, unused-node finder, DuckDB helper
+│   ├── utils/                               # snapshot builder, fingerprint tool, unused-node finder, DuckDB helper
 │   └── storage/                             # obsolete RustFS migration scripts
 ├── game_market/                             # dbt project (models, seeds, tests, profiles.yml)
-├── dashboard/                               # Streamlit app (home.py + views/)
+├── dashboard/                               # Streamlit app (home.py + views/; requirements.txt for Community Cloud)
 ├── sql/ddl/                                 # DDL for the Postgres log tables
 ├── docs/                                    # PIPELINE, DATA_MODEL, ANALYTICS, tests/
 ├── BRD_Game_Market_Intelligence_v2.md       # business requirements
@@ -162,6 +166,7 @@ of the same file.
 | [BRD](BRD_Game_Market_Intelligence_v2.md) | Business questions, scope, requirements, coverage limits, success criteria |
 | [TRD](TRD_Game_Market_Intelligence_v2.md) | Architecture, sources, storage, technical requirements, technical limitations |
 | [RUNBOOK.md](RUNBOOK.md) | Step-by-step use, daily operation, troubleshooting |
+| [DATA_SOURCES.md](DATA_SOURCES.md) | Sources, licences and attribution; contents of the public snapshot |
 | [docs/PIPELINE.md](docs/PIPELINE.md) | Flows, dbt modes, observability, health rules |
 | [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | Layers, models, grains |
 | [docs/ANALYTICS.md](docs/ANALYTICS.md) | Metric definitions and limitations |
@@ -172,3 +177,10 @@ of the same file.
 No license has been chosen, so all rights are reserved by default. Raw data belongs to its providers and is subject to
 their terms: Steam (Valve), IsThereAnyDeal, SteamCharts, OpenCritic, and the Mendeley and Kaggle dataset authors. Raw
 data is not stored in this repository.
+
+Data powered by Steam; not affiliated with or endorsed by Valve. Prices from [IsThereAnyDeal](https://isthereanydeal.com);
+monthly players from [SteamCharts](https://steamcharts.com) and the Kaggle dataset "Steam Monthly Average Players" by
+Victor Laputsky (CC0); 5-minute player history from the Mendeley dataset "Steam Games Dataset: Player count history,
+Price history and data about games" ([doi:10.17632/ycy3sy3vj2.1](https://doi.org/10.17632/ycy3sy3vj2.1),
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), published only in aggregated form. Details:
+[DATA_SOURCES.md](DATA_SOURCES.md).

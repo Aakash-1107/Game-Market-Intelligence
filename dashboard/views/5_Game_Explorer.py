@@ -71,13 +71,13 @@ k = query("""
 m1, m2, m3 = st.columns(3)
 if live is not None:
     vs = live.vs_last_month
-    m1.metric("Players online now", f"{live.now_players:,.0f}",
+    m1.metric("Players online, final reading", f"{live.now_players:,.0f}",
               f"{pct(vs, signed=True)} this week vs. {live.last_month:%b %Y}" if pd.notna(vs) else None,
-              help=f"Latest hourly reading ({local(live.now_at):%d %b %Y, %H:%M}, Berlin time). The change compares the "
+              help=f"Final hourly reading ({local(live.now_at):%d %b %Y, %H:%M}, Berlin time). The change compares the "
                    f"average of the last 7 days ({live.avg_7d:,.0f}) with the {live.last_month:%B %Y} monthly average "
                    f"({live.last_month_avg:,.0f} = 100%).", border=True, height="stretch")
 else:
-    m1.metric("Players online now", "—", help="No live readings for this game.", border=True, height="stretch")
+    m1.metric("Players online, final reading", "—", help="No hourly readings for this game.", border=True, height="stretch")
 m2.metric("Busiest month ever", f"{k.best_month:,.0f}" if pd.notna(k.best_month) else "—",
           f"{pd.Timestamp(k.latest_month_at):%b %Y}: {k.latest_month / k.best_month:.0%} of it" if pd.notna(k.best_month) else None,
           delta_color="off",
@@ -143,16 +143,16 @@ if len(hourly) >= 24:
                     alt.Chart(ref).mark_text(align="left", x=4, dy=-7, color=INK_2, fontSize=11).encode(
                         y="y:Q", text="label:N")]
     hs = hourly.dropna().set_index("recorded_at")["player_count"]
-    title = (f"Right now: {game} is {pct(live.vs_last_month, signed=True)} this week compared with its "
+    title = (f"At the end of collection: {game} was {pct(live.vs_last_month, signed=True)} this week compared with its "
              f"{live.last_month:%B} average" if live is not None and pd.notna(live.vs_last_month)
              else f"{game}, hour by hour since {hs.index.min():%d %b}")
     chart_block(
         title,
-        f"Players online every hour from the live pipeline, {hs.index.min():%d %b} – {hs.index.max():%d %b %Y, %H:%M} "
+        f"Players online every hour from the hourly collection, {hs.index.min():%d %b} – {hs.index.max():%d %b %Y, %H:%M} "
         "(Berlin time). The dashed line is the last complete month's average.",
         alt.layer(*hlayers).properties(height=240),
-        "This is the most recent data in the dashboard. It picks up updates and events from this month, "
-        "before they show up in the monthly history above.",
+        "This is the most recent data in the dashboard (collection was frozen on 7 Oct 2026). It shows updates and "
+        "events from the final weeks that are not in the monthly history above.",
         details="The daily wave is day vs. night. Breaks in the line are hours when the collector wasn't running.",
     )
 

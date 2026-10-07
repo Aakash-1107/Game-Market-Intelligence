@@ -3,7 +3,8 @@ version: 2
 # One exposure per Streamlit page (dashboard/home.py navigation). The dashboard reads schemas `reporting`
 # (rpt_* question models) and `marts` (gold facts and dim_game) only, never staging or intermediate.
 # depends_on = tables each page actually queries, including via the shared helpers in
-# dashboard/common.py: coverage() -> fact_player_activity, fact_player_activity_monthly;
+# dashboard/common.py: coverage() -> fact_player_activity, fact_player_activity_daily (5-minute range),
+# fact_player_activity_monthly; pipeline_counts() -> also fact_player_activity_daily (5-minute reading count);
 # live_snapshot() -> fact_player_activity, fact_player_activity_monthly, dim_game.
 
 exposures:
@@ -19,6 +20,7 @@ exposures:
     depends_on:
       - ref('dim_game')
       - ref('fact_player_activity')
+      - ref('fact_player_activity_daily')
       - ref('fact_player_activity_monthly')
       - ref('fact_price_snapshot')
       - ref('fact_reviews')
@@ -38,6 +40,7 @@ exposures:
       - ref('rpt_lifecycle_typical_curve')
       - ref('fact_player_activity_monthly')
       - ref('fact_player_activity')
+      - ref('fact_player_activity_daily')
 
   - name: dashboard_activity_health
     label: "Dashboard — Activity health (Q2)"
@@ -85,6 +88,7 @@ exposures:
       - ref('rpt_discount_effect')
       - ref('dim_game')
       - ref('fact_player_activity')
+      - ref('fact_player_activity_daily')
       - ref('fact_player_activity_monthly')
 
   - name: dashboard_game_explorer
@@ -101,6 +105,7 @@ exposures:
       - ref('rpt_game_lifecycle')
       - ref('rpt_activity_health')
       - ref('fact_player_activity')
+      - ref('fact_player_activity_daily')
       - ref('fact_player_activity_monthly')
       - ref('fact_price_snapshot')
       - ref('fact_reviews')
@@ -117,6 +122,7 @@ exposures:
     depends_on:
       - ref('dim_game')
       - ref('fact_player_activity')
+      - ref('fact_player_activity_daily')
       - ref('fact_player_activity_monthly')
       - ref('fact_price_snapshot')
       - ref('fact_reviews')

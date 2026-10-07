@@ -1,0 +1,9 @@
+# Dependencies of the hosted dashboard (Streamlit Community Cloud reads this file because it sits next to the
+# entrypoint dashboard/home.py). Pinned to the versions the dashboard was tested with. The pipeline's own
+# dependencies are in the root requirements.txt.
+streamlit==1.64.0
+duckdb==1.5.5
+pandas==3.0.5
+numpy==2.4.6
+altair==6.3.0
+python-dotenv==1.2.3

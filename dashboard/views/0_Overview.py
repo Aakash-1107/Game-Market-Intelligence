@@ -32,8 +32,8 @@ with c1:
     st.metric(f"Latest reading: {live_last:%a %d %b, %H:%M}", f"{snap['now_players'].sum():,.0f}", border=True,
               height="stretch",
               help=f"Players online, summed over the latest hourly reading of the {len(snap)} games we follow "
-                   f"({live_last:%a %d %b %Y, %H:%M}, Berlin time). Updated whenever the warehouse is rebuilt; "
-                   "hourly readings are collected continuously.")
+                   f"({live_last:%a %d %b %Y, %H:%M}, Berlin time). Collection was frozen on 7 Oct 2026, so this is the "
+                   "final reading.")
 with c2:
     st.metric(f"Biggest mover vs. {month:%B}", up_row["name"], f"{pct(up_row['vs_last_month'], signed=True)}",
               border=True, height="stretch", help=vs_help)
@@ -75,7 +75,7 @@ chart_block(
              "+800% jump and a −50% dip both fit."),
 )
 
-with st.expander("All games right now"):
+with st.expander("All games at the final reading"):
     st.dataframe(
         snap.sort_values("now_players", ascending=False)[
             ["name", "now_players", "peak_24h", "avg_7d", "last_month_avg", "vs_last_month"]],

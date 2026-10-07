@@ -18,7 +18,7 @@ c = query("""
         (select count(distinct steam_app_id) from marts.fact_player_activity where data_resolution = 'hourly') as live_games,
         (select count(distinct steam_app_id) from marts.fact_player_activity_monthly)                    as monthly_games,
         (select count(*) from marts.fact_player_activity_monthly)                                        as monthly_rows,
-        (select count(distinct steam_app_id) from marts.fact_player_activity where data_resolution = '5min') as fine_games,
+        (select count(distinct steam_app_id) from marts.fact_player_activity_daily where data_resolution = '5min') as fine_games,
         (select count(distinct steam_app_id) from marts.fact_price_snapshot)                             as price_games,
         (select min(observed_at) from marts.fact_price_snapshot)                                         as price_first,
         (select count(distinct steam_app_id) from marts.fact_reviews)                                    as review_games,
@@ -38,10 +38,10 @@ st.markdown("#### What we collect")
 st.markdown(f"""
 | Data | Source | How often | Games | Covers |
 |---|---|---|---|---|
-| Players online, live | Steam Web API | Every hour, automatically | {c.live_games} | {local(cov.live_first):%d %b %Y} – {live_last:%d %b %Y, %H:%M} |
+| Players online, hourly | Steam Web API | Every hour, until collection was frozen | {c.live_games} | {local(cov.live_first):%d %b %Y} – {live_last:%d %b %Y, %H:%M} |
 | Players online, monthly average | SteamCharts, gaps filled from a Kaggle archive | Refreshed by hand | {c.monthly_games} | {cov.monthly_first:%b %Y} – {cov.monthly_last:%b %Y} |
 | Players online, every 5 minutes | Historical backfill (one-off import) | Once | {c.fine_games} | {local(cov.fine_first):%b %Y} – {local(cov.fine_last):%b %Y} |
-| Prices and discounts | IsThereAnyDeal price history (Steam and {k.shops - 1} other shops) | Refreshed by hand | {c.price_games} | {local(c.price_first):%Y} – today |
+| Prices and discounts | IsThereAnyDeal price history (Steam and {k.shops - 1} other shops) | Refreshed by hand | {c.price_games} | {local(c.price_first):%Y} – 7 Oct 2026 |
 | Player reviews | Steam reviews (the 1,000 most recent per game) | Refreshed by hand | {c.review_games} | Most recent reviews |
 | Game details | Steam store (name, genres, release date, free or paid) | Refreshed by hand | {k.games} | Current store page |
 """)
@@ -51,8 +51,8 @@ st.caption(f"The {k.games} games were picked by hand: popular PC games on Steam,
 # ---- How it gets here ---------------------------------------------------------------------------
 st.markdown("#### How it gets here")
 st.markdown("""
-1. **Collect.** Python scripts call each source. The live player count runs every hour on a schedule (Prefect);
-   the other sources are refreshed by hand when needed.
+1. **Collect.** Python scripts call each source. The hourly player count ran every hour on a schedule;
+   the other sources were refreshed by hand. Collection was frozen on 7 Oct 2026.
 2. **Store the raw files.** Every response is saved unchanged (Parquet, JSON or CSV) in cloud storage (AWS S3),
    sorted by source and date. Nothing is edited at this stage, so every later step can be rebuilt from scratch.
 3. **Clean and combine (dbt).** dbt loads the raw files into a DuckDB database in three layers: *staging* cleans
@@ -65,7 +65,7 @@ st.markdown("""
 st.markdown("#### Pipeline scale")
 st.table(
     pd.DataFrame([
-        ("Player-count readings (live hourly + 5-minute backfill)", "fact_player_activity", k.readings),
+        ("Player-count readings (hourly + 5-minute backfill)", "fact_player_activity", k.readings),
         ("Monthly player averages", "fact_player_activity_monthly", c.monthly_rows),
         ("Price changes", "fact_price_snapshot", k.price_changes),
         ("Player reviews", "fact_reviews", k.reviews),
@@ -78,16 +78,14 @@ st.table(
 # ---- How fresh it is ----------------------------------------------------------------------------
 st.markdown("#### How fresh it is")
 st.markdown(
-    f"- **Last live reading:** {live_last:%a %d %b %Y, %H:%M} (Berlin time).\n"
+    f"- **Last hourly reading:** {live_last:%a %d %b %Y, %H:%M} (Berlin time).\n"
     f"- **Last complete month:** {cov.monthly_last:%B %Y}. Pages built on monthly data stop there; newer activity is "
     "on the Market overview.\n"
-    "- New live readings are collected every hour, but reach this dashboard only after the next dbt build.\n"
-    "- The dashboard loads the data once and keeps it until it is restarted, so numbers never change in the middle "
-    "of a presentation. Restart it to see new data."
+    "- Collection was frozen on 7 Oct 2026: no new data arrives, so the numbers no longer change."
 )
 
 # ---- Known gaps ---------------------------------------------------------------------------------
-gap = (f"- **Live collector outage:** no hourly readings from {local(cov.live_gap_start):%d %b %H:%M} to "
+gap = (f"- **Hourly collector outage:** no hourly readings from {local(cov.live_gap_start):%d %b %H:%M} to "
        f"{local(cov.live_gap_end):%d %b %H:%M}. Charts show a break in the line there.\n"
        if pd.notna(cov.live_gap_start) else "")
 st.markdown("#### Known gaps")
