@@ -1,76 +1,79 @@
 # PC Game Market & Activity Intelligence
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+[![Live dashboard](https://img.shields.io/badge/Live%20dashboard-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://game-market-intelligence.streamlit.app)
+[![Data snapshot](https://img.shields.io/badge/Data%20snapshot-2026--10--07-555555?logo=github)](https://github.com/Aakash-1107/Game-Market-Intelligence/releases/tag/data-2026-10-07)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![dbt](https://img.shields.io/badge/dbt-Core-FF694B?logo=dbt&logoColor=white)
-![DuckDB](https://img.shields.io/badge/DuckDB-analytics-FFF000?logo=duckdb&logoColor=black)
-![Prefect](https://img.shields.io/badge/Prefect-orchestration-024DFD?logo=prefect&logoColor=white)
+![DuckDB](https://img.shields.io/badge/DuckDB-1.5-FFF000?logo=duckdb&logoColor=black)
 ![AWS S3](https://img.shields.io/badge/AWS-S3-569A31?logo=amazons3&logoColor=white)
-![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)
+![Prefect](https://img.shields.io/badge/Prefect-3-024DFD?logo=prefect&logoColor=white)
 
-An end-to-end **batch data engineering pipeline** for the PC game market. It collects player counts, prices,
-discounts, game details and reviews for 55 Steam games from several public sources, stores every raw response,
-transforms the data into a tested star schema, monitors its own health, and answers four analytical questions in an
-interactive dashboard.
+A batch data pipeline that collects player counts, prices, discounts, game details and reviews for 55 PC games on
+Steam from eight sources, keeps every raw response in AWS S3, models the data with dbt into a tested star schema,
+monitors its own health, and serves the results in a dashboard.
 
-Capstone project of a Data Engineering programme (Weiterbildung). Formerly titled *Game Market Intelligence & Player
-Activity*. The focus is the engineering: ingestion, storage, modelling, data quality, orchestration and
-reproducibility. The dashboard demonstrates that the pipeline produces reusable analytical data.
+**[Open the dashboard](https://game-market-intelligence.streamlit.app)**: no installation, no account.
 
-**Status: finished, collection frozen on 7 Oct 2026** (window 14 Sep – 7 Oct 2026). The final results are published as
-a read-only snapshot (GitHub Release asset) that the hosted dashboard reads, so they need no credentials. What the
-snapshot contains, the sources and their licences: [DATA_SOURCES.md](DATA_SOURCES.md).
+![Market overview](docs/images/overview.png)
 
-## Overview
+## Status
 
-**The problem**
+Finished. Data collection ran from 13 Sep 2026 16:29 UTC to 7 Oct 2026 14:47 UTC and is now frozen. The final results
+are published as a 17 MB read-only database ([release `data-2026-10-07`](https://github.com/Aakash-1107/Game-Market-Intelligence/releases/tag/data-2026-10-07)),
+which the hosted dashboard reads. The code still runs end to end for anyone who wants to collect their own data.
 
-- Steam publishes no history of current player counts, so the history has to be collected, hour by hour.
-- Player activity, price history, monthly player history and reviews sit in different places with different
-  identifiers. Relating a game's players to its age or its discounts first needs collecting, aligning and cleaning
-  them.
+Built as the capstone project of a data engineering programme (Weiterbildung). The focus is the engineering; the
+dashboard shows that the pipeline produces data people can use.
 
-**What the pipeline does**
+## What the pipeline does
 
-- **Collects** data from eight sources: three Steam endpoints, IsThereAnyDeal (prices), SteamCharts (monthly players),
-  OpenCritic (critic reviews), and the Mendeley and Kaggle datasets (history).
-- **Collects on a schedule:** current player counts every hour on a Prefect managed work pool; prices, game details,
-  reviews and monthly players once a day in a second flow.
-- **Preserves raw data:** every response is written to AWS S3, append-only and partitioned by source and UTC date, so
-  every model can be rebuilt without calling a source again.
-- **Handles source limits:** paced requests, retries with back-off, HTTP 429 handling, a `robots.txt` check before
-  scraping, and per-game error isolation so one failing game never stops the batch.
-- **Transforms with dbt on DuckDB:** staging (bronze), intermediate (silver), marts (gold, star schema) and reporting
-  layers, with DuckDB reading the S3 files directly.
-- **Guarantees data quality:** uniqueness, not-null, referential-integrity, accepted-value and range tests run in
-  every `dbt build`. Staging deduplicates every source on its natural key, so reruns are idempotent.
-- **Blocks bad builds:** `dbt build` runs only if every upstream ingestion task succeeded, so models are never built
-  on a half-refreshed source.
-- **Monitors itself:** per-request, per-stage and per-dbt-node logs in Postgres feed health models that report, for
-  each data source, whether it is healthy now and where it failed.
-- **Scales by configuration:** adding a game takes one row in `tracked_games.csv`; no code changes.
-- **Serves a dashboard** of 8 pages (market overview, one page per question, game explorer, data page, pipeline
-  health) that reads only the analytical tables.
+- **Collects from eight sources:** three Steam endpoints (current players, game details, reviews), IsThereAnyDeal
+  (price history), SteamCharts (monthly players), OpenCritic (critic reviews) and two published datasets (Mendeley,
+  5-minute player history 2017–2020; Kaggle, used for validation).
+- **Keeps raw data immutable:** every response lands in AWS S3, append-only and partitioned by source and UTC date.
+  Every model can be rebuilt from S3 without calling a source again.
+- **Respects source limits:** paced requests, retries with back-off, HTTP 429 handling, a `robots.txt` check before
+  scraping, and per-game error isolation, so one failing game never stops a batch.
+- **Models with dbt on DuckDB:** staging → intermediate → marts (star schema) → reporting, plus an observability layer.
+  DuckDB reads the S3 files directly.
+- **Tests every build:** 192 data tests (uniqueness, not-null, relationships, accepted values, ranges). Staging
+  deduplicates every source on its natural key, so reruns are idempotent.
+- **Blocks bad builds:** the daily flow runs `dbt build` only if every ingestion task succeeded and the newest hourly
+  file is fresh, so models are never built on a half-refreshed source.
+- **Monitors itself:** per-request, per-stage and per-model logs in PostgreSQL feed health models that show, per source,
+  whether it is healthy and where it failed.
+- **Scales by configuration:** adding a game is one row in `tracked_games.csv`.
 
-**What it answers**
+## Problems found and fixed along the way
 
-| # | Question |
+- **13% duplicate reviews:** the new deduplication tests caught 7,034 duplicate reviews, caused by Steam repeating
+  reviews across pages within one fetch.
+- **Silent throttling:** Steam sometimes answers rate-limited review requests with `200 OK` and an empty page. The
+  script now retries empty pages and logs a failure instead of "0 reviews".
+- **A compute quota:** the hourly collector ran on a Prefect managed pool until the free compute quota ran out on
+  5 Oct 2026. It moved to GitHub Actions the next day; the gap and its cause are documented.
+- **A fresh-clone test:** cloning into an empty folder and following only the docs revealed five setup gaps (empty
+  environment variables, a missing dependency, a missing `dbt deps`, a database-path mismatch, a missing folder). All
+  fixed.
+
+Every incident, with dates and impact: [docs/TRD.md, section 13.1](docs/TRD.md#131-collection-incidents).
+
+## What the data shows
+
+Findings are descriptive: what coincided with what, not what caused what.
+
+| Question | Result |
 |---|---|
-| Q1 | **Life after launch:** how do games gain, lose, retain and recover players after release? |
-| Q2 | **Activity health:** can a stable game be told apart from a declining one at a similar player count? |
-| Q3 | **Discounts:** do players stay above their pre-discount level after a discount ends? |
-| Q4 | **Unusual days:** which days show abnormal activity, and do they coincide with discounts or Steam-wide events? |
+| **Life after launch:** how do games keep their players? | The typical game holds 47% of its launch-peak players three months after launch and about 43% from month 4 on (43 games). |
+| **Activity health:** stable or declining? | Over Oct 2025 – Sep 2026, 33 of 48 games were stable, 10 up and down, 3 growing, 2 declining. |
+| **Discounts:** do players stay? | During a discount the typical game had 16% more players than in the two weeks before, and still 6% more two to four weeks after it ended (174 discounts, 23 games). |
+| **Unusual days:** what drives spikes? | Surges were about 13 times as frequent on days with a discount of 50% or more as on days without one (29 games). |
 
-Findings are descriptive: they show what coincided with what, not what caused what. Selected results (build of
-2026-09-29):
+![Discounts: The Witcher 3](docs/images/discounts_witcher3.png)
 
-- The median game holds about 47% of its launch-peak players three months after launch (42 games).
-- During a discount the median game had about 16% more players than before it, and about 6% more two to four weeks
-  after (174 discounts, 23 games).
-- Surges were about 13 times as frequent on days with a discount of 50% or more as on days without one. One game with
-  many major updates during sales supplies a large share of those days.
+![Unusual days: Terraria](docs/images/anomalies_terraria.png)
 
-Scope and coverage: [BRD](BRD_Game_Market_Intelligence_v2.md). Metric definitions:
-[docs/ANALYTICS.md](docs/ANALYTICS.md).
+Definitions, baselines and full results: [docs/ANALYTICS.md](docs/ANALYTICS.md).
 
 ## Architecture
 
@@ -82,18 +85,19 @@ flowchart LR
         S3["SteamCharts"]
         S4["OpenCritic, Mendeley, Kaggle"]
     end
-    subgraph ING ["Ingestion (Python + Prefect)"]
-        H["Hourly flow<br/>Prefect managed pool"]
-        D["Daily flow<br/>local run"]
-        M["Manual scripts"]
+    subgraph ING ["Ingestion (Python)"]
+        H["Hourly player counts<br/>GitHub Actions"]
+        D["Daily flow<br/>Prefect, failure gate"]
+        M["One-off scripts"]
     end
-    RAW[("AWS S3<br/>raw files,<br/>append-only")]
-    LOG[("Postgres (Neon)<br/>pipeline logs")]
+    RAW[("AWS S3<br/>raw, append-only")]
+    LOG[("PostgreSQL<br/>pipeline logs")]
     subgraph DBT ["dbt Core + DuckDB"]
-        ST["staging"] --> IN["intermediate"] --> MA["marts<br/>star schema"] --> RP["reporting<br/>Q1 to Q4"]
+        ST["staging"] --> IN["intermediate"] --> MA["marts<br/>star schema"] --> RP["reporting"]
         OB["observability"]
     end
-    DASH["Streamlit<br/>dashboard"]
+    SNAP[("Snapshot<br/>GitHub Release")]
+    DASH["Streamlit dashboard<br/>Community Cloud"]
 
     S1 --> H
     S1 --> D
@@ -107,80 +111,59 @@ flowchart LR
     D -.-> LOG
     RAW --> ST
     LOG -.-> OB
-    MA --> DASH
-    RP --> DASH
-    OB --> DASH
+    MA --> SNAP
+    RP --> SNAP
+    SNAP --> DASH
 ```
 
-It is a batch design: the questions need hourly to daily resolution, so no streaming component is used. More diagrams
-(data flow, runtime view, lineage, star schema, flows, observability) and the technology decisions:
-[TRD](TRD_Game_Market_Intelligence_v2.md).
+A batch design: the questions need hourly to daily resolution, so no streaming component is needed. More diagrams and
+the technology decisions: [docs/TRD.md](docs/TRD.md).
 
 ## Tech stack
 
-| Area | Technology | Used for |
-|---|---|---|
-| Language | Python 3.11+ | Ingestion scripts and flows (`requests`, `pandas`, `pyarrow`, `boto3`) |
-| Raw storage | AWS S3 | Append-only raw files, partitioned `source/YYYY/MM/DD` |
-| Transformation and tests | dbt Core, `dbt-duckdb`, `dbt_utils` | Layered SQL models, data tests, lineage, exposures |
-| Analytical database | DuckDB | One local file; reads the S3 files directly |
-| Log database | PostgreSQL (Neon) | Ingestion, stage and dbt-result logs |
-| Orchestration | Prefect | Hourly schedule on a managed pool, daily flow with a failure gate |
-| Dashboard | Streamlit | Read-only analytical dashboard |
-| Configuration | `python-dotenv`, `.env` | All credentials and settings come from environment variables |
+| Area | Technology |
+|---|---|
+| Ingestion | Python 3.11 (`requests`, `pandas`, `pyarrow`, `boto3`) |
+| Raw storage | AWS S3 |
+| Transformation and tests | dbt Core, `dbt-duckdb`, `dbt_utils` |
+| Analytical database | DuckDB |
+| Orchestration | Prefect (daily flow), GitHub Actions (hourly collector) |
+| Pipeline logs | PostgreSQL (Neon) |
+| Dashboard | Streamlit, hosted on Streamlit Community Cloud |
 
-## Get started
+## Try it
 
-Follow [RUNBOOK.md, Part A](RUNBOOK.md#part-a-from-clone-to-your-own-analysis): prerequisites, installation, the
-one-time inputs, data collection, and your first SQL queries. Daily operation and troubleshooting are in Parts B to E
-of the same file.
+| You want to… | Do this |
+|---|---|
+| See the results | Open the [dashboard](https://game-market-intelligence.streamlit.app). |
+| Run the dashboard locally | Clone the repo, `pip install -r dashboard/requirements.txt`, `streamlit run dashboard/home.py`. It downloads the snapshot by itself. |
+| Query the data with SQL | Download the [snapshot](https://github.com/Aakash-1107/Game-Market-Intelligence/releases/tag/data-2026-10-07) and open it with DuckDB. |
+| Run the whole pipeline | Follow [docs/RUNBOOK.md](docs/RUNBOOK.md): your own AWS bucket and an IsThereAnyDeal key are enough. |
 
 ## Repository structure
 
 ```text
 .
-├── First_data_ingest/steam_data_ingest.py   # hourly player-count flow (Prefect)
-├── flows/daily_market_refresh.py            # daily flow: ingestion, gate, dbt build
-├── prefect.yaml                             # hourly deployment (managed work pool)
-├── src/
-│   ├── ingestion/                           # one script per source, plus ID resolution and backfill
-│   ├── observability/run_log.py             # stage and dbt result logging
-│   ├── common/                              # tracked-games loader, log database connection
-│   ├── utils/                               # snapshot builder, fingerprint tool, unused-node finder, DuckDB helper
-│   └── storage/                             # obsolete RustFS migration scripts
-├── game_market/                             # dbt project (models, seeds, tests, profiles.yml)
-├── dashboard/                               # Streamlit app (home.py + views/; requirements.txt for Community Cloud)
-├── sql/ddl/                                 # DDL for the Postgres log tables
-├── docs/                                    # PIPELINE, DATA_MODEL, ANALYTICS, tests/
-├── BRD_Game_Market_Intelligence_v2.md       # business requirements
-├── TRD_Game_Market_Intelligence_v2.md       # technical requirements
-├── RUNBOOK.md                               # use and operation
-├── .env.example                             # all environment variables
-└── requirements.txt                         # dependencies of the ingestion scripts
+├── src/ingestion/                 # one script per source, ID resolution, backfill
+├── flows/daily_market_refresh.py  # daily flow: ingestion, failure gate, dbt build
+├── .github/workflows/             # hourly player-count collector (manual since the freeze)
+├── game_market/                   # dbt project: models, seeds, tests, profiles.yml
+├── dashboard/                     # Streamlit app
+├── src/utils/build_snapshot.py    # builds the public snapshot
+├── sql/ddl/                       # log tables in PostgreSQL
+└── docs/                          # requirements, design, analytics, runbook, test evidence
 ```
 
 ## Documentation
 
-| Document | Content |
-|---|---|
-| [BRD](BRD_Game_Market_Intelligence_v2.md) | Business questions, scope, requirements, coverage limits, success criteria |
-| [TRD](TRD_Game_Market_Intelligence_v2.md) | Architecture, sources, storage, technical requirements, technical limitations |
-| [RUNBOOK.md](RUNBOOK.md) | Step-by-step use, daily operation, troubleshooting |
-| [DATA_SOURCES.md](DATA_SOURCES.md) | Sources, licences and attribution; contents of the public snapshot |
-| [docs/PIPELINE.md](docs/PIPELINE.md) | Flows, dbt modes, observability, health rules |
-| [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | Layers, models, grains |
-| [docs/ANALYTICS.md](docs/ANALYTICS.md) | Metric definitions and limitations |
-| [docs/tests/](docs/tests/) | Test evidence |
+Start at [docs/README.md](docs/README.md): reading order and one home per topic.
 
-## License and data terms
-
-No license has been chosen, so all rights are reserved by default. Raw data belongs to its providers and is subject to
-their terms: Steam (Valve), IsThereAnyDeal, SteamCharts, OpenCritic, and the Mendeley and Kaggle dataset authors. Raw
-data is not stored in this repository.
+## Data and license
 
 Data powered by Steam; not affiliated with or endorsed by Valve. Prices from [IsThereAnyDeal](https://isthereanydeal.com);
-monthly players from [SteamCharts](https://steamcharts.com) and the Kaggle dataset "Steam Monthly Average Players" by
-Victor Laputsky (CC0); 5-minute player history from the Mendeley dataset "Steam Games Dataset: Player count history,
-Price history and data about games" ([doi:10.17632/ycy3sy3vj2.1](https://doi.org/10.17632/ycy3sy3vj2.1),
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), published only in aggregated form. Details:
-[DATA_SOURCES.md](DATA_SOURCES.md).
+monthly players from [SteamCharts](https://steamcharts.com); 5-minute history from the Mendeley dataset
+([doi:10.17632/ycy3sy3vj2.1](https://doi.org/10.17632/ycy3sy3vj2.1), CC BY 4.0), published only as aggregates. Sources,
+licences and what the snapshot contains: [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md).
+
+The code is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE): free for personal, educational and
+other noncommercial use. Commercial use requires permission; contact me through GitHub.
