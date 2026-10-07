@@ -12,7 +12,7 @@ import psycopg2
 import requests
 from dotenv import load_dotenv
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.common.tracked_games import load_tracked_games  # noqa: E402
 
 load_dotenv(override=True)
@@ -61,7 +61,7 @@ def get_with_retries(appid: int) -> requests.Response:
 
 def get_current_player_counts():
     """Fetch live player count for all games. Returns (records, events)."""
-    # Use UTC from now onward — previous data was Berlin time (documented in DATA_QUALITY.md)
+    # Use UTC from now onward — previous data was Berlin time (documented in docs/TRD.md, collection incidents)
     timestamp = datetime.now(timezone.utc)
     records = []
     events = []

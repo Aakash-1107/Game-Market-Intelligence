@@ -44,9 +44,6 @@ steam_apps.json
 output.json
 rawg.json
 
-# Ingestion script output (generated at runtime, appended by demo_data_ingest.py)
-First_data_ingest/player_count.csv
-
 # Runtime logs
 logs/
 *.log

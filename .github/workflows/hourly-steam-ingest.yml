@@ -30,4 +30,4 @@ jobs:
           AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
-        run: python First_data_ingest/steam_data_ingest.py
+        run: python src/ingestion/steam_player_counts.py

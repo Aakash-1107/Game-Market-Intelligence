@@ -2,7 +2,7 @@
 -- (plus one pipeline-level row when a run fails before any game is processed).
 -- Matches the live Neon table as of 2026-09-28 (no constraints, no indexes).
 --
--- Written by every ingestion script (src/ingestion/*.py, First_data_ingest/steam_data_ingest.py).
+-- Written by every ingestion script (src/ingestion/*.py, including the hourly src/ingestion/steam_player_counts.py).
 -- status values in use: success, failed, error, skipped, not_found, no_coverage, matched_auto, matched_manual, matched_imported,
 --                       plus historical values (ambiguous, matched, failure) from one-off setup scripts.
 --

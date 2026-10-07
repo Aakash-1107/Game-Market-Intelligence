@@ -8,7 +8,7 @@
 
 The log is observability, not data: a missing DATABASE_URL, an unreachable database, or a failed insert is reported
 as a warning, and the ingestion itself carries on. Without a database the connection is a no-op (reads return
-nothing). Not used by the hourly flow (First_data_ingest/steam_data_ingest.py), which has its own guard.
+nothing). Not used by the hourly script (src/ingestion/steam_player_counts.py), which has its own guard.
 """
 import logging
 import os
