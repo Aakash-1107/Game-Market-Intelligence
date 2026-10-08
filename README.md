@@ -1,5 +1,7 @@
 # PC Game Market & Activity Intelligence
 
+**English** | [Deutsch](README.de.md)
+
 [![Live dashboard](https://img.shields.io/badge/Live%20dashboard-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://game-market-intelligence.streamlit.app)
 [![Data snapshot](https://img.shields.io/badge/Data%20snapshot-2026--10--07-555555?logo=github)](https://github.com/Aakash-1107/Game-Market-Intelligence/releases/tag/data-2026-10-07)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
