@@ -16,7 +16,7 @@ games as (
         game_key,
         steam_app_id
 
-    from {{ ref('dim_game') }}
+    from {{ ref('dim_gamez') }}
 
 ),
 
