@@ -21,7 +21,7 @@ import os
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg2
@@ -37,7 +37,7 @@ def _warn(message: str) -> None:
     try:
         from prefect import get_run_logger
         get_run_logger().warning(message)
-    except Exception:   # outside a flow/task run there is no Prefect logger
+    except Exception:  # noqa: BLE001, S110 - no Prefect logger outside a flow run; warning is optional
         pass
 
 
@@ -88,18 +88,18 @@ class Stage:
 def log_stage(run_id: str, flow_name: str, stage: str, records_in: int | None = None):
     """Write `running` on entry, then `success` or `failed` (with finished_at, counts, error). Re-raises the
     stage's exception unchanged; a failure to log never raises."""
-    s = Stage(run_id, flow_name, stage, datetime.now(timezone.utc), records_in)
+    s = Stage(run_id, flow_name, stage, datetime.now(UTC), records_in)
     s._write("running")
     try:
         yield s
     except BaseException as e:
-        s._write("failed", datetime.now(timezone.utc), f"{type(e).__name__}: {e}"[:4000])
+        s._write("failed", datetime.now(UTC), f"{type(e).__name__}: {e}"[:4000])
         raise
-    s._write("success", datetime.now(timezone.utc))
+    s._write("success", datetime.now(UTC))
 
 
 def log_skipped(run_id: str, flow_name: str, stage: str, reason: str) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     Stage(run_id, flow_name, stage, now)._write("skipped", now, reason[:4000])
 
 
@@ -141,7 +141,7 @@ def record_dbt_results(run_id: str, path: Path, not_before: datetime | None = No
     `not_before` (dbt crashed before writing results, so the file is from an earlier build). Returns rows written."""
     try:
         rows, meta = parse_run_results(path, run_id)
-        started = datetime.fromisoformat(meta.get("invocation_started_at", meta["generated_at"]).replace("Z", "+00:00"))
+        started = datetime.fromisoformat(meta.get("invocation_started_at", meta["generated_at"]))
         if not_before and started < not_before:
             _warn(f"observability: {path.name} is from an earlier dbt invocation ({started:%Y-%m-%d %H:%M:%S} UTC); "
                   "not recorded")

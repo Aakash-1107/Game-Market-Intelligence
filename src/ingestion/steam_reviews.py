@@ -13,22 +13,22 @@ Run from project root:
     python src/ingestion/steam_reviews.py 413150 427520    # only these (must be tracked)
 """
 
-import os
 import json
+import logging
+import os
 import sys
 import time
-import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-import requests
 import boto3
+import requests
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
-from src.common.log_db import connect_log_db  # noqa: E402
+from src.common.log_db import connect_log_db
+from src.common.tracked_games import load_tracked_app_ids
 
 load_dotenv()
 
@@ -74,7 +74,7 @@ def retry_after_seconds(response: requests.Response) -> float:
         if value.strip().isdigit():
             return float(value)
         try:
-            return max(0.0, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
+            return max(0.0, (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds())
         except (TypeError, ValueError):
             pass
     return DEFAULT_429_WAIT_SECONDS
@@ -170,7 +170,7 @@ def fetch_reviews_for_game(app_id: int) -> tuple[list[dict], dict]:
 
 def write_to_s3(s3_client, app_id: int, reviews: list[dict],
                 query_summary: dict, bucket: str) -> str:
-    today = datetime.now(timezone.utc)
+    today = datetime.now(UTC)
     timestamp = today.strftime("%Y%m%d_%H%M")
 
     payload = {
@@ -203,7 +203,7 @@ def log_to_neon(pg_conn, app_id: int, rows: int,
                 (run_timestamp, source, stage, game_id, status, rows_affected, error_message)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, [
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             "steam_reviews",
             "fetch_reviews",
             str(app_id),
@@ -251,11 +251,11 @@ def main(requested: list[int] | None = None) -> dict:
             log_to_neon(pg_conn, app_id, len(reviews), "success")
             log.info(f"  [{app_id}] {len(reviews)} reviews → s3://{AWS_BUCKET}/{s3_key}")
             success_count += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - per-game isolation; error is logged and the batch continues
             log.error(f"  [{app_id}] FAILED: {e}")
             try:
                 log_to_neon(pg_conn, app_id, 0, "error", str(e))
-            except Exception as log_err:
+            except Exception as log_err:  # noqa: BLE001 - a failed log write must not stop the run
                 log.error(f"  [{app_id}] Failed to write to ingestion_log: {log_err}")
             fail_count += 1
             failed_ids.append(app_id)

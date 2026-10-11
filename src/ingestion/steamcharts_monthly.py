@@ -14,19 +14,19 @@ import io
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 
 import boto3
 import pandas as pd
-from botocore.exceptions import ClientError, NoCredentialsError
 import requests
+from botocore.exceptions import ClientError, NoCredentialsError
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
-from src.common.log_db import connect_log_db  # noqa: E402
+from src.common.log_db import connect_log_db
+from src.common.tracked_games import load_tracked_app_ids
 
 load_dotenv()
 
@@ -137,7 +137,7 @@ def run(requested: list[int] | None = None) -> dict:
     )
     conn = connect_log_db(os.getenv(NEON_URL_ENV))
 
-    run_at = datetime.now(timezone.utc)
+    run_at = datetime.now(UTC)
     date_path = run_at.strftime("%Y/%m/%d")
     stamp = run_at.strftime("%Y%m%d_%H%M")
 

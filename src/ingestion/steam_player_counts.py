@@ -2,9 +2,8 @@ import io
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import boto3
 import pandas as pd
@@ -13,7 +12,7 @@ import requests
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.common.tracked_games import load_tracked_games  # noqa: E402
+from src.common.tracked_games import load_tracked_games
 
 load_dotenv(override=True)
 
@@ -62,7 +61,7 @@ def get_with_retries(appid: int) -> requests.Response:
 def get_current_player_counts():
     """Fetch live player count for all games. Returns (records, events)."""
     # Use UTC from now onward — previous data was Berlin time (documented in docs/TRD.md, collection incidents)
-    timestamp = datetime.now(timezone.utc)
+    timestamp = datetime.now(UTC)
     records = []
     events = []
 
@@ -88,7 +87,7 @@ def get_current_player_counts():
             })
             print(f"[{timestamp}] {name} ({appid}): {player_count} players")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - per-game isolation; error is logged and the batch continues
             status_code = getattr(getattr(e, "response", None), "status_code", None)
             events.append({
                 "source": "steam",
@@ -109,7 +108,7 @@ def save_to_s3(records):
     df = pd.DataFrame(records)
 
     # Partition by UTC date, filename includes hour for uniqueness
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     partition = now_utc.strftime("%Y/%m/%d")
     filename  = now_utc.strftime("player_counts_%Y%m%d_%H%M.parquet")
     s3_key    = f"raw/steam/player_counts/{partition}/{filename}"
@@ -176,7 +175,7 @@ def write_ingestion_log(events, db_url, pipeline_status="success", pipeline_erro
             print(f"Wrote {len(events) or 1} events to ingestion_log.")
         finally:
             conn.close()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - a failed log write must not stop the run
         print(f"CRITICAL: ingestion_log write failed: {e}")
 
 

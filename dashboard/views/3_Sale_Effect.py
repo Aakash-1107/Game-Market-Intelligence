@@ -2,8 +2,23 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from common import (DAY_AXIS, FLAT, INK_2, OUTCOME, OUTCOME_ORDER, chart_block, coverage, game_image, middle_row,
-                    page_header, pct, players, sale_bands, scale_for, utc)
+from common import (
+    DAY_AXIS,
+    FLAT,
+    INK_2,
+    OUTCOME,
+    OUTCOME_ORDER,
+    chart_block,
+    coverage,
+    game_image,
+    middle_row,
+    page_header,
+    pct,
+    players,
+    sale_bands,
+    scale_for,
+    utc,
+)
 from db import query
 
 cov = coverage()

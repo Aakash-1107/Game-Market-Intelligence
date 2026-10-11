@@ -2,8 +2,20 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from common import (FLAT, HEALTH, INK, INK_2, MUTED, PATTERN, chart_block, coverage, live_snapshot, local,
-                    page_header, pct)
+from common import (
+    FLAT,
+    HEALTH,
+    INK,
+    INK_2,
+    MUTED,
+    PATTERN,
+    chart_block,
+    coverage,
+    live_snapshot,
+    local,
+    page_header,
+    pct,
+)
 from db import query
 
 cov = coverage()

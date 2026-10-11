@@ -20,7 +20,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import boto3
@@ -28,9 +28,11 @@ import requests
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.common.log_db import connect_log_db  # noqa: E402
-from src.common.tracked_games import (  # noqa: E402
-    MATCHED_OVERRIDE_STATUSES, load_manual_overrides, load_tracked_app_ids,
+from src.common.log_db import connect_log_db
+from src.common.tracked_games import (
+    MATCHED_OVERRIDE_STATUSES,
+    load_manual_overrides,
+    load_tracked_app_ids,
 )
 
 load_dotenv()
@@ -85,7 +87,7 @@ def resolve_one(steam_app_id: int, overrides: dict[int, dict]) -> dict:
             "http_status":  200,
             "error":        None,
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - per-game isolation; error is logged and the batch continues
         http_status = getattr(getattr(e, "response", None), "status_code", None)
         return {
             "steam_app_id": steam_app_id,
@@ -145,7 +147,7 @@ def resolve_itad_ids(app_ids: list[int] | None = None) -> dict[int, str]:
         app_ids = active
 
     overrides = load_manual_overrides(SOURCE)
-    run_at = datetime.now(timezone.utc)
+    run_at = datetime.now(UTC)
     conn = connect_log_db(DATABASE_URL)
     s3_client = boto3.client(
         "s3",
@@ -162,7 +164,7 @@ def resolve_itad_ids(app_ids: list[int] | None = None) -> dict[int, str]:
             print(f"  {result['status']:<15} {steam_app_id:<10} {result['itad_game_id'] or result['error'] or ''}")
             try:
                 log_ingestion(conn, result)
-            except Exception as log_err:
+            except Exception as log_err:  # noqa: BLE001 - a failed log write must not stop the run
                 print(f"  [{steam_app_id}] Failed to write to ingestion_log: {log_err}")
             if steam_app_id not in overrides:
                 time.sleep(SLEEP_SECONDS)

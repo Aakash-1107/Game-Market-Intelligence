@@ -18,7 +18,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
@@ -90,7 +90,7 @@ def build(source: Path, out: Path) -> dict[str, int]:
     con.execute(f"attach '{source.as_posix()}' as src (read_only)")
     counts = {}
     for name, (select, where) in TABLES.items():
-        schema, table = name.split(".")
+        schema = name.split(".")[0]
         con.execute(f"create schema if not exists {schema}")
         con.execute(f"create table {name} as select {select} from src.{name}"
                     + (f" where {where}" if where else ""))
@@ -106,7 +106,7 @@ def build(source: Path, out: Path) -> dict[str, int]:
             ?              as git_commit,
             ?              as row_counts_json,
             ?              as sources
-    """, [datetime.now(timezone.utc), COLLECTION_START, COLLECTION_END, git_commit(), json.dumps(counts), SOURCES])
+    """, [datetime.now(UTC), COLLECTION_START, COLLECTION_END, git_commit(), json.dumps(counts), SOURCES])
     con.execute("checkpoint")
     con.close()
     return counts

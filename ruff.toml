@@ -1,0 +1,5 @@
+target-version = "py311"
+src = [".", "dashboard"]   # modules in dashboard/ (db, common) count as first-party
+
+[lint]
+extend-select = ["E402", "E712"]

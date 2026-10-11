@@ -9,19 +9,20 @@ Run from project root:
     python src/ingestion/itad_price_history.py                 # all active games
     python src/ingestion/itad_price_history.py 105600 413150   # only these (must be active)
 """
+import json
 import os
 import sys
-import json
 import time
+from datetime import UTC, datetime
+from pathlib import Path
+
 import boto3
 import requests
-from datetime import datetime, timezone
-from pathlib import Path
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.ingestion.resolve_ids import resolve_itad_ids  # noqa: E402
-from src.common.log_db import connect_log_db  # noqa: E402
+from src.common.log_db import connect_log_db
+from src.ingestion.resolve_ids import resolve_itad_ids
 
 load_dotenv()
 
@@ -55,7 +56,7 @@ def fetch_price_history(itad_id: str) -> list:
 
 def upload_to_s3(s3_client, steam_app_id: int, records: list, run_timestamp: str) -> str:
     """Upload raw JSON for one game to S3. Returns the S3 key."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     s3_key = (
         f"raw/itad/price_history/"
         f"{now.year:04d}/{now.month:02d}/{now.day:02d}/"
@@ -100,7 +101,7 @@ def log_ingestion(conn, steam_app_id: int, status: str,
 def main(mappings: dict[int, str] | None = None, app_ids: list[int] | None = None) -> dict:
     """Fetch price history. `mappings` ({steam_app_id: itad_uuid}) comes from resolve_itad_ids;
     if omitted, IDs are resolved first. Returns {"succeeded": [...], "failed": [...], "records": n}."""
-    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M")
 
     print(f"ITAD price history ingestion started — {run_timestamp}")
 
@@ -144,7 +145,7 @@ def main(mappings: dict[int, str] | None = None, app_ids: list[int] | None = Non
             http_code = e.response.status_code if e.response is not None else None
             log_ingestion(conn, steam_app_id, "error", 0, http_code, f"HTTPError: {e}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - per-game isolation; error is logged and the batch continues
             print(f"  ERROR       {steam_app_id:<10} {e}")
             failed.append((steam_app_id, str(e)))
             log_ingestion(conn, steam_app_id, "error", 0, None, str(e))
@@ -157,7 +158,7 @@ def main(mappings: dict[int, str] | None = None, app_ids: list[int] | None = Non
     print(f"Games failed:    {len(failed)}")
 
     if failed:
-        print(f"\nFailed games:")
+        print("\nFailed games:")
         for app_id, err in failed:
             print(f"  {app_id:<10} {err}")
 

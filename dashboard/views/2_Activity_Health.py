@@ -2,9 +2,26 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from common import (COUNT_AXIS, HEALTH, HEALTH_ORDER, HOVER_HINT, INK, INK_2, LEGEND_HINT, MUTED, baseline_range,
-                    chart_block, highlight_lines, legend_filter, page_header, pct, scale_for, share_of,
-                    spread_labels, view_toggle)
+from common import (
+    COUNT_AXIS,
+    HEALTH,
+    HEALTH_ORDER,
+    HOVER_HINT,
+    INK,
+    INK_2,
+    LEGEND_HINT,
+    MUTED,
+    baseline_range,
+    chart_block,
+    highlight_lines,
+    legend_filter,
+    page_header,
+    pct,
+    scale_for,
+    share_of,
+    spread_labels,
+    view_toggle,
+)
 from db import query
 
 bounds = query("select min(window_start) as window_start, max(window_end) as window_end from reporting.rpt_activity_health").iloc[0]
