@@ -19,20 +19,20 @@ Run from project root:
 Output key: raw/steam/player_counts/backfill/YYYY/MM/DD/{app_id}_backfill.parquet
 """
 
-import os
 import io
-import sys
 import logging
+import os
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
-import pandas as pd
 import boto3
+import pandas as pd
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
-from src.common.log_db import connect_log_db  # noqa: E402
+from src.common.log_db import connect_log_db
+from src.common.tracked_games import load_tracked_app_ids
 
 load_dotenv()
 
@@ -93,7 +93,7 @@ def load_and_clean_csv(filepath: Path, app_id: int) -> pd.DataFrame:
     # Add pipeline metadata columns
     df["steam_app_id"] = str(app_id)
     df["data_resolution"] = DATA_RESOLUTION
-    df["ingested_at"] = datetime.now(timezone.utc)
+    df["ingested_at"] = datetime.now(UTC)
 
     # Keep only what the fact table needs
     df = df[["steam_app_id", "recorded_at", "playercount", "data_resolution", "ingested_at"]]
@@ -114,7 +114,7 @@ def write_to_s3(s3_client, df: pd.DataFrame, app_id: int, bucket: str) -> str:
     df.to_parquet(buffer, index=False, engine="pyarrow")
     buffer.seek(0)
 
-    today = datetime.now(timezone.utc)
+    today = datetime.now(UTC)
     s3_key = (
         f"raw/steam/player_counts/backfill/"
         f"{today.year}/{today.month:02d}/{today.day:02d}/"
@@ -137,7 +137,7 @@ def log_to_neon(pg_conn, app_id: int, s3_key: str,
                 (run_timestamp, source, stage, game_id, status, rows_affected, error_message)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, [
-            datetime.now(timezone.utc),
+            datetime.now(UTC),
             "steam_backfill",
             "backfill_player_counts",
             str(app_id),
@@ -201,11 +201,11 @@ def main(app_ids: list[int] | None = None) -> dict:
             log_to_neon(pg_conn, app_id, s3_key, row_count, "success")
             log.info(f"  [{app_id}] {row_count:,} rows → s3://{AWS_BUCKET}/{s3_key}")
             counts["success"] += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - per-game isolation; error is logged and the batch continues
             log.error(f"  [{app_id}] FAILED: {e}")
             try:
                 log_to_neon(pg_conn, app_id, "", 0, "error", str(e))
-            except Exception as log_err:
+            except Exception as log_err:  # noqa: BLE001 - a failed log write must not stop the run
                 log.error(f"  [{app_id}] Failed to write to ingestion_log: {log_err}")
             counts["error"] += 1
 

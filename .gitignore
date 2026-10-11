@@ -94,3 +94,4 @@ exploration/
 
 # dbt writes an anonymous user id next to the profile (game_market/profiles.yml)
 game_market/.user.yml
+.ruff_cache/

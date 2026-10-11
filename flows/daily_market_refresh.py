@@ -37,7 +37,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import boto3
@@ -56,7 +56,12 @@ load_dotenv(ROOT / ".env")
 
 from src.common.duckdb_path import duckdb_path  # noqa: E402
 from src.common.tracked_games import load_tracked_app_ids  # noqa: E402
-from src.ingestion import itad_price_history, steam_app_details, steam_reviews, steamcharts_monthly  # noqa: E402
+from src.ingestion import (  # noqa: E402
+    itad_price_history,
+    steam_app_details,
+    steam_reviews,
+    steamcharts_monthly,
+)
 from src.ingestion.resolve_ids import resolve_itad_ids  # noqa: E402
 from src.observability.run_log import log_skipped, log_stage, record_dbt_results  # noqa: E402
 
@@ -199,7 +204,7 @@ def _check_hourly_freshness() -> dict:
         aws_access_key_id=os.environ["AWS_ACCESS_KEY"],
         aws_secret_access_key=os.environ["AWS_SECRET_KEY"],
     )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     newest = None
     for day in (now, now - timedelta(days=1)):   # hourly files are partitioned by UTC date
         prefix = f"{HOURLY_PREFIX}{day:%Y/%m/%d}/"
@@ -253,7 +258,7 @@ def _is_lock_error(text: str) -> bool:
 def _ensure_dbt_packages(dbt: Path) -> None:
     """Run `dbt deps` when a package from package-lock.yml is not installed (dbt_packages/ is gitignored, so a fresh
     clone has none and dbt build would fail on the first dbt_utils macro)."""
-    import yaml   # installed with dbt-core
+    import yaml  # installed with dbt-core
     lock = yaml.safe_load((DBT_PROJECT_DIR / "package-lock.yml").read_text(encoding="utf-8")) or {}
     missing = [p["name"] for p in lock.get("packages", [])
                if not (DBT_PROJECT_DIR / "dbt_packages" / p["name"]).is_dir()]
@@ -262,7 +267,7 @@ def _ensure_dbt_packages(dbt: Path) -> None:
     get_run_logger().info(f"dbt: package(s) not installed ({', '.join(missing)}); running dbt deps")
     proc = subprocess.run(
         [str(dbt), "deps", "--no-use-colors", "--profiles-dir", str(DBT_PROJECT_DIR)],
-        cwd=DBT_PROJECT_DIR, env=os.environ.copy(), capture_output=True, text=True, encoding="utf-8",
+        check=False, cwd=DBT_PROJECT_DIR, env=os.environ.copy(), capture_output=True, text=True, encoding="utf-8",
         errors="replace",
     )
     if proc.returncode != 0:
@@ -288,11 +293,11 @@ def _dbt_build() -> dict:
 
     dbt = Path(sys.executable).parent / ("dbt.exe" if os.name == "nt" else "dbt")
     _ensure_dbt_packages(dbt)
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     proc = subprocess.run(
         [str(dbt), "build", "--no-use-colors", "--threads", DBT_THREADS, "--profiles-dir", str(DBT_PROJECT_DIR),
          *dbt_mode_args()],
-        cwd=DBT_PROJECT_DIR, env=os.environ.copy(), capture_output=True, text=True, encoding="utf-8",
+        check=False, cwd=DBT_PROJECT_DIR, env=os.environ.copy(), capture_output=True, text=True, encoding="utf-8",
         errors="replace",
     )
     output = proc.stdout + proc.stderr
@@ -333,7 +338,7 @@ def daily_market_refresh(app_ids: list[int] | None = None) -> dict:
     for name, fut in futures.items():
         try:
             value = fut.result(raise_on_failure=False)
-        except Exception as e:   # a task that never ran (upstream failed) has no result: UnfinishedRun
+        except Exception as e:  # noqa: BLE001 - a task that never ran (upstream failed) has no result: UnfinishedRun
             value = e
         if fut.state.is_completed():
             results[name] = {"matched": len(value)} if name == "resolve_ids" else value

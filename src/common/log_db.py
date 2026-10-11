@@ -24,7 +24,7 @@ def _warn(message: str) -> None:
     try:   # inside a Prefect task, also into the flow run's log
         from prefect import get_run_logger
         get_run_logger().warning(message)
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 - no Prefect logger outside a flow run; warning is optional
         pass
 
 
@@ -70,7 +70,7 @@ class _Cursor:
         try:
             if self._cur is not None:
                 self._cur.close()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110 - cleanup must never raise
             pass
 
     def __enter__(self):
@@ -105,14 +105,14 @@ class LogConnection:
         if self._conn is not None:
             try:
                 self._conn.rollback()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110 - cleanup must never raise
                 pass
 
     def close(self) -> None:
         if self._conn is not None:
             try:
                 self._conn.close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110 - cleanup must never raise
                 pass
             self._conn = None
 

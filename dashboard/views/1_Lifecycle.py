@@ -2,8 +2,25 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from common import (COUNT_AXIS, HOVER_HINT, INK, INK_2, MUTED, PATTERN, PATTERN_ORDER, baseline_range, chart_block,
-                    coverage, highlight_lines, page_header, pct, scale_for, share_of, spread_labels, view_toggle)
+from common import (
+    COUNT_AXIS,
+    HOVER_HINT,
+    INK,
+    INK_2,
+    MUTED,
+    PATTERN,
+    PATTERN_ORDER,
+    baseline_range,
+    chart_block,
+    coverage,
+    highlight_lines,
+    page_header,
+    pct,
+    scale_for,
+    share_of,
+    spread_labels,
+    view_toggle,
+)
 from db import query
 
 cov = coverage()
@@ -150,7 +167,7 @@ chart_block(
 )
 
 # ---- Chart 3: comebacks ------------------------------------------------------------------------
-comeback = games[games["has_recovery"] == True].copy()  # noqa: E712 (nullable boolean)
+comeback = games[games["has_recovery"] == True].copy()  # noqa: E712 - pandas nullable boolean; "is True" does not work on a Series
 comeback = comeback.sort_values("latest_vs_launch_peak")
 cb = comeback.melt(id_vars=["name", "pattern", "launch_peak_avg", "lowest_after_launch_players", "latest_avg_players"],
                    value_vars=["lowest_vs_launch_peak", "latest_vs_launch_peak"], var_name="point", value_name="vs_peak")

@@ -9,20 +9,23 @@ data only after someone adds its override row. Neon game_source_mapping is no lo
 Run from project root:
     python src/ingestion/opencritic_reviews.py
 """
+import json
 import os
 import sys
-import json
 import time
+from datetime import UTC, datetime
+from pathlib import Path
+
 import boto3
 import requests
-from datetime import datetime, timezone
-from pathlib import Path
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.common.log_db import connect_log_db  # noqa: E402
-from src.common.tracked_games import (  # noqa: E402
-    MATCHED_OVERRIDE_STATUSES, load_manual_overrides, load_tracked_app_ids,
+from src.common.log_db import connect_log_db
+from src.common.tracked_games import (
+    MATCHED_OVERRIDE_STATUSES,
+    load_manual_overrides,
+    load_tracked_app_ids,
 )
 
 load_dotenv()
@@ -69,14 +72,14 @@ def fetch_reviews(opencritic_id: str) -> tuple[list | None, int | None, str | No
     except requests.HTTPError as e:
         http_code = e.response.status_code if e.response is not None else None
         return None, http_code, f"HTTPError: {e}"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - per-game isolation; error is logged and the batch continues
         return None, None, str(e)
 
 
 def upload_to_s3(s3_client, steam_app_id: int, opencritic_id: str,
                  reviews: list, run_timestamp: str) -> str:
     """Upload raw review JSON for one game to S3. Returns the S3 key."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     s3_key = (
         f"raw/opencritic/reviews/"
         f"{now.year:04d}/{now.month:02d}/{now.day:02d}/"
@@ -119,7 +122,7 @@ def log_ingestion(conn, steam_app_id: int, status: str,
 
 
 def main():
-    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M")
     print(f"OpenCritic review ingestion started — {run_timestamp}")
 
     conn = connect_log_db(DATABASE_URL)
@@ -153,7 +156,7 @@ def main():
 
         time.sleep(SLEEP_SECONDS)
 
-    print(f"\nIngestion complete")
+    print("\nIngestion complete")
     print(f"  Succeeded: {len(succeeded)}")
     print(f"  Failed:    {len(failed)}")
 

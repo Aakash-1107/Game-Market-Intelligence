@@ -1,10 +1,10 @@
 import os
 import sys
 import urllib.request
+from pathlib import Path
 
 import duckdb
 import pandas as pd
-from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 

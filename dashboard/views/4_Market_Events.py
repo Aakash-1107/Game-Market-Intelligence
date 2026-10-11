@@ -3,8 +3,24 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from common import (DAY_AXIS, DOWN, FLAT, INK, INK_2, LEGEND_HINT, MUTED, STEAM_WIDE, UP, chart_block, coverage,
-                    game_image, legend_filter, page_header, sale_bands, utc)
+from common import (
+    DAY_AXIS,
+    DOWN,
+    FLAT,
+    INK,
+    INK_2,
+    LEGEND_HINT,
+    MUTED,
+    STEAM_WIDE,
+    UP,
+    chart_block,
+    coverage,
+    game_image,
+    legend_filter,
+    page_header,
+    sale_bands,
+    utc,
+)
 from db import query
 
 cov = coverage()
